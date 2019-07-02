@@ -969,7 +969,7 @@ export class GirModule {
             def.push(`    connect(sigName: string, callback: any): number`)
             def.push(`    connect_after(sigName: string, callback: any): number`)
             def.push(`    emit(sigName: string, ...args: any[]): void`)
-            def.push(`    disconnect(sigTag: number): void`)
+            def.push(`    disconnect(id: number): void`)
         }
 
         // TODO: Records have fields
