@@ -726,10 +726,10 @@ export class GirModule {
         let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex)
         let paramComma = params.length > 0 ? ', ' : ''
 
-        return [`    connect(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
+         return [`    connect(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
             `    connect_after(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
             `    emit(sigName: "${sigName}"${paramComma}${params}): void`
-        ]
+         ]
     }
 
     exportFunction(e: GirFunction) {
