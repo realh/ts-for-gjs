@@ -3,6 +3,13 @@ import * as lodash from 'lodash'
 import * as commander from 'commander'
 import fs = require('fs')
 
+interface ClassDetails {
+    name: string
+    isDerivedFromGObject: boolean
+    parentName?: string
+    parentNameShort?: string
+}
+
 interface TsForGjsExtended {
     _module?: GirModule
     _fullSymName?: string
@@ -805,6 +812,12 @@ export class GirModule {
         }
     }
 
+    private forEachSuperAndInterface(e: GirClass,
+                                     callback: ((cls: GirClass) => void)) {
+        this.traverseInheritanceTree(e, callback)
+        this.forEachInterface(e, callback)
+    }
+
     private isDerivedFromGObject(e: GirClass): boolean {
         let ret = false
         this.traverseInheritanceTree(e, (cls) => {
@@ -813,6 +826,148 @@ export class GirModule {
             }
         })
         return ret
+    }
+
+    private getClassDetails(e: GirClass) {
+        let name = e.$.name
+        let isDerivedFromGObject = this.isDerivedFromGObject(e)
+        let parentName: string|null = null
+        let counter: number = 0
+        this.traverseInheritanceTree(e, (cls) => {
+            if (counter++ != 1)
+                return
+            parentName = cls._fullSymName || null
+        })
+        let parentNameShort: string|null = parentName
+        if (parentNameShort && this.name) {
+            let s = (parentNameShort || "").split(".", 2)
+            if (s[0] === this.name) {
+                parentNameShort = s[1]
+            }
+        }
+        return { name, isDerivedFromGObject, parentName, parentNameShort }
+    }
+
+    private checkName(desc: string[], name: string | null, localNames: any):
+            [string[], boolean] {
+        if (!desc || desc.length == 0)
+            return [[], false]
+
+        if (!name) {
+            // console.error(`No name for ${desc}`)
+            return [[], false]
+        }
+
+        if (localNames[name]) {
+            // console.warn(`Name ${name} already defined (${desc})`)
+            return [[], false]
+        }
+
+        localNames[name] = 1
+        return [desc, true]
+    }
+
+    private processProperties(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        if (cls.property) {
+            let prefix = "GObject."
+            if (this.name == "GObject") prefix = ""
+            def.push(`    // Properties of ${cls._fullSymName}`)
+            for (let p of cls.property) {
+                let [desc, name, origName] = this.getProperty(p)
+                let [aDesc, added] = this.checkName(desc, name, localNames)
+                def = def.concat(aDesc)
+                if (added && origName) {
+                    def.push(`    connect(sigName: "notify::${p}", ` +
+                             `callback: ((obj: ${name}, ` +
+                             `pspec: ${prefix}ParamSpec) => void)): number`)
+                }
+            }
+        }
+        return def
+    }
+
+    private processFields(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        if (cls.field) {
+            def.push(`    // Fields of ${cls._fullSymName}`)
+            for (let f of cls.field) {
+                let [desc, name] = this.getVariable(f, false, false)
+                let [aDesc, added] = this.checkName(desc, name, localNames)
+                if (added) {
+                    def.push(`    ${aDesc[0]}`)
+                }
+                def = def.concat(aDesc)
+            }
+        }
+        return def
+    }
+
+    private processFinalMethods(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        if (cls.method) {
+            def.push(`    // Final methods of ${cls._fullSymName}`)
+            for (let f of cls.method) {
+                let [desc, name] = this.getFunction(f, "    ")
+                def = def.concat(this.checkName(desc, name, localNames)[0])
+            }
+        }
+        return def
+    }
+
+    private processVirtualMethods(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        let vmeth = cls["virtual-method"]
+        if (vmeth) {
+            def.push(`    // Virtual methods of ${cls._fullSymName}`)
+            for (let f of vmeth) {
+                let [desc, name] = this.getFunction(f, "    ", "vfunc_")
+                desc = this.checkName(desc, name, localNames)[0]
+                if (desc[0]) {
+                    desc[0] = desc[0].replace("(", "?(")
+                }
+                def = def.concat(desc)
+            }
+        }
+        return def
+    }
+
+    private processSignals(cls: GirClass): string[] {
+        let def: string[] = []
+        let signals = cls["glib:signal"]
+        if (signals) {
+            def.push(`    // Signals of ${cls._fullSymName}`)
+            for (let s of signals)
+                def = def.concat(this.getSignalFunc(s, name))
+        }
+        return def
+    }
+
+    // Represents a record as a class, or the concrete part of a GObject class
+    // or interface as an object (not a class, see
+    // https://github.com/sammydre/ts-for-gjs/issues/12#issuecomment-510907749
+    // )
+    private exportClassInternal(e: GirClass) {
+        let def: string[] = []
+        let details = this.getClassDetails(e)
+        if (details.isDerivedFromGObject) {
+            def.push(`export const ${name}: {`)
+        } else {
+            def.push(`export class ${name} {`)
+        }
+        let localNames = {}
+        this.forEachSuperAndInterface(e, (cls: GirClass) => {
+            def = def.concat(this.processProperties(e, localNames))
+        })
+        this.traverseInheritanceTree(e, (cls: GirClass) => {
+            def = def.concat(this.processFields(e, localNames))
+        })
+        this.traverseInheritanceTree(e, (cls: GirClass) => {
+            def = def.concat(this.processFinalMethods(e, localNames))
+        })
+        this.forEachSuperAndInterface(e, (cls: GirClass) => {
+            def = def.concat(this.processSignals(e))
+        })
     }
 
     private exportObjectInternal(e: GirClass | GirClass) {
