@@ -835,26 +835,6 @@ export class GirModule {
         return ret
     }
 
-    private getClassDetails(e: GirClass) {
-        let name = e.$.name
-        let isDerivedFromGObject = this.isDerivedFromGObject(e)
-        let parentName: string|null = null
-        let counter: number = 0
-        this.traverseInheritanceTree(e, (cls) => {
-            if (counter++ != 1)
-                return
-            parentName = cls._fullSymName || null
-        })
-        let parentNameShort: string|null = parentName
-        if (parentNameShort && this.name) {
-            let s = (parentNameShort || "").split(".", 2)
-            if (s[0] === this.name) {
-                parentNameShort = s[1]
-            }
-        }
-        return { name, isDerivedFromGObject, parentName, parentNameShort }
-    }
-
     private checkName(desc: string[], name: string | null, localNames: any):
             [string[], boolean] {
         if (!desc || desc.length == 0)
@@ -952,13 +932,38 @@ export class GirModule {
 
     // Represents a record or GObject class as a Typescript class
     private exportClassInternal(e: GirClass) {
-        let def: string[] = []
-        let details = this.getClassDetails(e)
-        if (details.isDerivedFromGObject) {
-            def.push(`export const ${name}: {`)
-        } else {
-            def.push(`export class ${name} {`)
+        let name = e.$.name
+        let isDerivedFromGObject = this.isDerivedFromGObject(e)
+        let parentName: string|null = null
+        let counter: number = 0
+        this.traverseInheritanceTree(e, (cls) => {
+            if (counter++ != 1)
+                return
+            parentName = cls._fullSymName || null
+        })
+        let parentNameShort: string|null = parentName
+        if (parentNameShort && this.name) {
+            let s = (parentNameShort || "").split(".", 2)
+            if (s[0] === this.name) {
+                parentNameShort = s[1]
+            }
         }
+
+        let def: string[] = []
+        let parents = ""
+        if (e.$.parent) {
+            parents += ` extends ${parentNameShort}`;
+        }
+        if (e.implements) {
+            parents += " implements " + e.implements.map(i => {
+                let name = i.$.name
+                if (name && name.indexOf('.') < 0) {
+                    name = this.name + "." + name
+                }
+                return name
+            }).join(", ")
+        }
+        def.push(`export class ${name}${parents} {`)
         let localNames = {}
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
             def = def.concat(this.processProperties(cls, localNames))
@@ -971,6 +976,59 @@ export class GirModule {
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
             def = def.concat(this.processSignals(cls))
         })
+        // Records, classes and interfaces all have a static name
+        def.push("    static name: string")
+        // JS constructor(s)
+        if (isDerivedFromGObject) {
+            def.push(`    constructor (config?: ${name}_ConstructProps)`)
+            def.push(`    _init (config?: ${name}_ConstructProps): void`)
+        } else {
+            let ctor: GirFunction[] = (e['constructor'] || []) as GirFunction[]
+            if (ctor) {
+                for (let f of ctor) {                    
+                    let [desc, funcName] =
+                        this.getConstructorFunction(name, f, "    static ")
+                    if (!funcName)
+                        continue
+                    if (funcName != "new")
+                        continue
+                    def = def.concat(desc)
+                    const jsStyleCtor = desc[0]
+                        .replace("static new", "constructor")
+                        .replace(/:[^:]+$/, "")
+                    def = def.concat(jsStyleCtor)
+                }
+            }
+        }
+        // Static methods
+        let stc: string[] = []
+        let ctor: GirFunction[] = (e['constructor'] || []) as GirFunction[]
+        if (ctor) {
+            for (let f of ctor) {
+                let [desc, funcName] =
+                    this.getConstructorFunction(name, f, "    static ")
+                if (!funcName)
+                    continue
+                stc = stc.concat(desc)
+            }
+        }
+        if (e.function) {
+            for (let f of e.function) {
+                let [desc, funcName] = this.getFunction(f, "    static ")
+                // I don't think we should be skipping "new"
+                /*
+                if (funcName === "new")
+                    continue
+                */
+                stc = stc.concat(desc)
+            }
+        }
+        if (stc.length > 0) {
+            def = def.concat(stc)
+        }
+
+        def.push("}")
+        return def
     }
 
     private exportObjectInternal(e: GirClass | GirClass) {
