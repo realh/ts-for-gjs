@@ -808,6 +808,7 @@ export class GirModule {
 
             if (iface) {
                 callback(iface)
+                this.forEachInterface(iface, callback)
             }
         }
     }
@@ -815,6 +816,12 @@ export class GirModule {
     private forEachSuperAndInterface(e: GirClass,
                                      callback: ((cls: GirClass) => void)) {
         this.traverseInheritanceTree(e, callback)
+        this.forEachInterface(e, callback)
+    }
+
+    private forEachInterfaceAndSelf(e: GirClass,
+                                    callback: ((cls: GirClass) => void)) {
+        callback(e)
         this.forEachInterface(e, callback)
     }
 
@@ -943,10 +950,7 @@ export class GirModule {
         return def
     }
 
-    // Represents a record as a class, or the concrete part of a GObject class
-    // or interface as an object (not a class, see
-    // https://github.com/sammydre/ts-for-gjs/issues/12#issuecomment-510907749
-    // )
+    // Represents a record or GObject class as a Typescript class
     private exportClassInternal(e: GirClass) {
         let def: string[] = []
         let details = this.getClassDetails(e)
@@ -956,17 +960,16 @@ export class GirModule {
             def.push(`export class ${name} {`)
         }
         let localNames = {}
-        this.forEachSuperAndInterface(e, (cls: GirClass) => {
-            def = def.concat(this.processProperties(e, localNames))
+        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
+            def = def.concat(this.processProperties(cls, localNames))
         })
-        this.traverseInheritanceTree(e, (cls: GirClass) => {
-            def = def.concat(this.processFields(e, localNames))
+        def = def.concat(this.processFields(e, localNames))
+        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
+            def = def.concat(this.processFinalMethods(cls, localNames))
         })
-        this.traverseInheritanceTree(e, (cls: GirClass) => {
-            def = def.concat(this.processFinalMethods(e, localNames))
-        })
-        this.forEachSuperAndInterface(e, (cls: GirClass) => {
-            def = def.concat(this.processSignals(e))
+        def = def.concat(this.processVirtualMethods(e, localNames))
+        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
+            def = def.concat(this.processSignals(cls))
         })
     }
 
