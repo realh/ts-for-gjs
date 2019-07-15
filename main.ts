@@ -727,16 +727,39 @@ export class GirModule {
         return [desc, funcName]
     }
 
-    private getSignalFunc(e: GirFunction, clsName: string) {
-        let sigName = e.$.name
-        let [retType, outArrayLengthIndex] = this.getReturnType(e)
-        let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex)
-        let paramComma = params.length > 0 ? ', ' : ''
-
-         return [`    connect(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
-            `    connect_after(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
-            `    emit(sigName: "${sigName}"${paramComma}${params}): void`
-         ]
+    private getSignalFunc(e: GirFunction, clsName: string)
+    private getSignalFunc(sigName: string, clsName: string, params: string,
+                          retType: string)
+    private getSignalFunc(clsName: string)
+    private getSignalFunc(signal: string | GirFunction, clsName?: string,
+                          params?: string, retType?: string) {
+        if (typeof signal != "string") {
+            let outArrayLengthIndex = 0;
+            let outParams: string[] = [];
+            [retType, outArrayLengthIndex] = this.getReturnType(signal);
+            [params, outParams] = this.getParameters(signal.parameters,
+                                                     outArrayLengthIndex);
+            signal = signal.$.name;
+        } else if (!clsName) {
+            clsName = signal
+            signal = "string"
+        } else {
+            signal = `"${signal}"`
+        }
+        let callback
+        let emit
+        if (params !== undefined) {
+            let paramComma = params.length > 0 ? ', ' : ''
+            callback = `(obj: ${clsName}${paramComma}${params}) => ${retType}`
+            emit = `${paramComma}${params}`
+        } else {
+            callback = "Function"
+            emit = ", ...args: any[]"
+        }
+        return [`    connect(sigName: ${signal}, callback: ${callback}): number`,
+            `    connect_after(sigName: ${signal}, callback: ${callback}): number`,
+            `    emit(sigName: ${signal}${emit}): void`
+        ]
     }
 
     exportFunction(e: GirFunction) {
@@ -868,9 +891,8 @@ export class GirModule {
                 let [aDesc, added] = this.checkName(desc, name, localNames)
                 def = def.concat(aDesc)
                 if (added && origName) {
-                    def.push(`    connect(sigName: "notify::${p}", ` +
-                             `callback: ((obj: ${name}, ` +
-                             `pspec: ${prefix}ParamSpec) => void)): number`)
+                    def.concat(this.getSignalFunc(`notify::${p}`, name || "",
+                        `pspec: ${prefix}ParamSpec)`, "void"))
                 }
             }
         }
@@ -935,9 +957,13 @@ export class GirModule {
 
     // Represents a record or GObject class as a Typescript class
     private exportClassInternal(e: GirClass) {
+        if (e.$ && e.$["glib:is-gtype-struct-for"]) {
+            return []   
+        }
         let name = e.$.name
         let isDerivedFromGObject = this.isDerivedFromGObject(e)
         let parentName: string|null = null
+
         let counter: number = 0
         this.traverseInheritanceTree(e, (cls) => {
             if (counter++ != 1)
@@ -953,6 +979,25 @@ export class GirModule {
         }
 
         let def: string[] = []
+
+        // Properties for construction
+        if (isDerivedFromGObject) {
+            let ext: string = ' '
+            if (parentName)
+                ext = `extends ${parentNameShort}_ConstructProps `
+
+            def.push(`export interface ${name}_ConstructProps ${ext}{`)
+            let constructPropNames = {}
+            if (e.property) {
+                for (let p of e.property) {
+                    let [desc, name] = this.getProperty(p, true)
+                    def = def.concat(this.checkName(desc, name, constructPropNames)[0])
+                }
+            }
+            def.push("}")
+        }
+
+        // Class definition starts here
         let parents = ""
         if (e.$.parent) {
             parents += ` extends ${parentNameShort}`;
@@ -979,12 +1024,13 @@ export class GirModule {
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
             def = def.concat(this.processSignals(cls))
         })
-        // Records, classes and interfaces all have a static name
-        def.push("    static name: string")
-        // JS constructor(s)
+
+        // JS constructor(s) and signal methods
         if (isDerivedFromGObject) {
+            def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
             def.push(`    constructor (config?: ${name}_ConstructProps)`)
             def.push(`    _init (config?: ${name}_ConstructProps): void`)
+            def.concat(this.getSignalFunc(name))
         } else {
             let ctor: GirFunction[] = (e['constructor'] || []) as GirFunction[]
             if (ctor) {
@@ -1003,6 +1049,10 @@ export class GirModule {
                 }
             }
         }
+
+        // Records, classes and interfaces all have a static name
+        def.push("    static name: string")
+
         // Static methods
         let stc: string[] = []
         let ctor: GirFunction[] = (e['constructor'] || []) as GirFunction[]
