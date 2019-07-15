@@ -733,7 +733,10 @@ export class GirModule {
         let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex)
         let paramComma = params.length > 0 ? ', ' : ''
 
-        return [`    connect(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`]
+         return [`    connect(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
+            `    connect_after(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
+            `    emit(sigName: "${sigName}"${paramComma}${params}): void`
+         ]
     }
 
     exportFunction(e: GirFunction) {
@@ -1177,8 +1180,12 @@ export class GirModule {
             if (this.name == "GObject") prefix = ""
             for (let p of propertyNames) {
                 def.push(`    connect(sigName: "notify::${p}", callback: ((obj: ${name}, pspec: ${prefix}ParamSpec) => void)): number`)
+                def.push(`    connect_after(sigName: "notify::${p}", callback: ((obj: ${name}, pspec: ${prefix}ParamSpec) => void)): number`)
             }
             def.push(`    connect(sigName: string, callback: any): number`)
+            def.push(`    connect_after(sigName: string, callback: any): number`)
+            def.push(`    emit(sigName: string, ...args: any[]): void`)
+            def.push(`    disconnect(id: number): void`)
         }
 
         // TODO: Records have fields
@@ -1237,6 +1244,9 @@ export class GirModule {
                 def = def.concat(stc)
             }
         }
+
+        if (isDerivedFromGObject)
+            def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
 
         def.push("}")
 
@@ -1354,7 +1364,14 @@ export class GirModule {
 
         if (this.ns.alias)
             for (let e of this.ns.alias)
-                out = out.concat(this.exportAlias(e))
+                // GType is not a number in GJS
+                if (this.name != "GObject" || e.$.name != "Type")
+                    out = out.concat(this.exportAlias(e))
+
+        if (this.name == "GObject")
+            out = out.concat(["export interface Type {",
+                "    name: string",
+                "}"])
 
         outStream.write(out.join("\n"))
     }
