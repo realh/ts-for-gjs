@@ -727,10 +727,15 @@ export class GirModule {
         return [desc, funcName]
     }
 
+    // 1. Signal details are provided by a GirFunction
     private getSignalFunc(e: GirFunction, clsName: string)
+    // 2. Signal details are provided as signal name, target class name,
+    //    params (excluding arg1: emitter) and return type as strings
     private getSignalFunc(sigName: string, clsName: string, params: string,
                           retType: string)
+    // 3. Gets the standard generic signal functions for a named class
     private getSignalFunc(clsName: string)
+    // 4. Implementation
     private getSignalFunc(signal: string | GirFunction, clsName?: string,
                           params?: string, retType?: string) {
         if (typeof signal != "string") {
@@ -950,9 +955,64 @@ export class GirModule {
         if (signals) {
             def.push(`    // Signals of ${cls._fullSymName}`)
             for (let s of signals)
-                def = def.concat(this.getSignalFunc(s, name))
+                def = def.concat(this.getSignalFunc(s, cls.$.name))
         }
         return def
+    }
+
+    // If a static method has the same name as one in a superclass, but with
+    // incompatible parameters or return types, we need to provide a generic
+    // form. For some reason a signature of <T, V>(arg?: T): V covers all cases.
+    // It's better for return type to be a generic too, because if this
+    // overload is abused it results in V being "unknown", and should cause a
+    // compilation error. The error will be in the wrong place, but it's better
+    // than nothing.
+    // See issue #12.
+    private getStaticOverloads(e: GirClass, desc: string[], funcName: string,
+            getFunctions: (cls: GirClass) => [string[], string | null][]):
+            string[]
+    {
+        let clash = false
+        this.traverseInheritanceTree(e, (cls: GirClass) => {
+            if (clash) return;
+            const funcs = getFunctions(cls)
+            for (const [desc2, funcName2] of funcs) {
+                if (funcName === funcName2 && desc != desc2) {
+                    clash = true
+                    break
+                }
+            }
+        });
+        return clash ? [`    static ${funcName}<T, V>(arg?: T): V`] : []
+    }
+
+    private getStaticConstructors(e: GirClass,
+                                filter?: (funcName: string) => boolean):
+            [string[], string | null][]
+    {
+        let funcs: GirFunction[] = (e['constructor'] || []) as GirFunction[]
+        let ctors = funcs.map(f =>
+            this.getConstructorFunction(e.$.name, f, "    static "))
+        if (filter)
+            ctors = ctors.filter(([desc, funcName]) => funcName && filter(funcName))
+        return ctors
+    }
+
+    private getOtherStaticFunctions(e: GirClass): [string[], string][] {
+        let fns: [string[], string][] = []
+        if (e.function) {
+            for (let f of e.function) {
+                let [desc, funcName] = this.getFunction(f, "    static")
+                if (funcName && funcName !== "new")
+                    fns.push([desc, funcName])
+            }
+        }
+        return fns
+    }
+
+    private getStaticNew(e: GirClass): [string[], string | null] {
+        let funcs = this.getStaticConstructors(e, fn => fn === "new")
+        return funcs.length ? funcs[0] : [[], null]
     }
 
     // Represents a record or GObject class as a Typescript class
@@ -1032,49 +1092,36 @@ export class GirModule {
             def.push(`    _init (config?: ${name}_ConstructProps): void`)
             def.concat(this.getSignalFunc(name))
         } else {
-            let ctor: GirFunction[] = (e['constructor'] || []) as GirFunction[]
-            if (ctor) {
-                for (let f of ctor) {                    
-                    let [desc, funcName] =
-                        this.getConstructorFunction(name, f, "    static ")
-                    if (!funcName)
-                        continue
-                    if (funcName != "new")
-                        continue
-                    def = def.concat(desc)
-                    const jsStyleCtor = desc[0]
-                        .replace("static new", "constructor")
-                        .replace(/:[^:]+$/, "")
-                    def = def.concat(jsStyleCtor)
-                }
+            let [desc, funcName] = this.getStaticNew(e)
+            if (funcName) {
+                def = def.concat(desc)
+                def = def.concat(this.getStaticOverloads(e, desc, funcName,
+                        cls => [this.getStaticNew(e)]))
+                const jsStyleCtor = desc[0]
+                    .replace("static new", "constructor")
+                    .replace(/:[^:]+$/, "")
+                def = def.concat(jsStyleCtor)
             }
         }
 
         // Records, classes and interfaces all have a static name
         def.push("    static name: string")
 
-        // Static methods
+        // Static methods, <constructor> and <function>
         let stc: string[] = []
-        let ctor: GirFunction[] = (e['constructor'] || []) as GirFunction[]
-        if (ctor) {
-            for (let f of ctor) {
-                let [desc, funcName] =
-                    this.getConstructorFunction(name, f, "    static ")
-                if (!funcName)
-                    continue
+        let ctors = this.getStaticConstructors(e, fn => fn !== "new")
+        if (ctors) {
+            for (let [desc, funcName] of ctors) {
+                if (!funcName) continue
                 stc = stc.concat(desc)
+                stc = stc.concat(this.getStaticOverloads(e, desc, funcName,
+                    cls => this.getStaticConstructors(cls, fn => fn !== "new")))
             }
         }
-        if (e.function) {
-            for (let f of e.function) {
-                let [desc, funcName] = this.getFunction(f, "    static ")
-                // I don't think we should be skipping "new"
-                /*
-                if (funcName === "new")
-                    continue
-                */
-                stc = stc.concat(desc)
-            }
+        for (let [desc, funcName] of this.getOtherStaticFunctions(e)) {
+            stc = stc.concat(desc)
+            stc = stc.concat(this.getStaticOverloads(e, desc, funcName,
+                cls => this.getOtherStaticFunctions(cls)))
         }
         if (stc.length > 0) {
             def = def.concat(stc)
