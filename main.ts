@@ -299,10 +299,10 @@ export class GirModule {
         if (!classes) return
         for (let cls of classes) {
             let parent
-            if (cls.$ && cls.$.parent)
-                parent = cls.$.parent
-            else if (cls.$ && cls.$.prerequisite)
+            if (cls.$ && cls.$.prerequisite)
                 parent = cls.$.prerequisite
+            else if (cls.$ && cls.$.parent)
+                parent = cls.$.parent
             if (!parent) continue
             if (!cls._fullSymName) continue
 
