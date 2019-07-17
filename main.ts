@@ -32,6 +32,11 @@ interface GirImplements {
         "name"?: string
     }
 }
+interface GirPrerequisite {
+    $: {
+        "name"?: string
+    }
+}
 interface GirType {
     $: {
         name: string
@@ -94,7 +99,6 @@ interface GirClass extends TsForGjsExtended {
     $: {
         name: string
         parent?: string
-        prerequisite?: string
         version?: string
         // Not sure what this means
         disguised?: string
@@ -110,6 +114,7 @@ interface GirClass extends TsForGjsExtended {
     "virtual-method"?: GirFunction[]
     "constructor"?: GirFunction[] | Function
     implements?: GirImplements[]
+    prerequisite?: GirPrerequisite[]
 
     _module?: GirModule
 }
@@ -298,9 +303,9 @@ export class GirModule {
     private loadHierarchy(classes, inheritanceTable) {
         if (!classes) return
         for (let cls of classes) {
-            let parent
-            if (cls.$ && cls.$.prerequisite)
-                parent = cls.$.prerequisite
+            let parent: string | null = null
+            if (cls.prerequisite)
+                parent = cls.prerequisite[0].$.name
             else if (cls.$ && cls.$.parent)
                 parent = cls.$.parent
             if (!parent) continue
@@ -855,15 +860,16 @@ export class GirModule {
                 this.forEachInterface(iface, callback, recurseObjects, dups)
             }
         }
-        if (e.$.prerequisite) {
-            let parentName = e.$.prerequisite
+        if (e.prerequisite) {
+            let parentName = e.prerequisite[0].$.name
+            if (!parentName)
+                return
             if (parentName.indexOf(".") < 0) {
                 parentName = mod.name + "." + parentName
             }
             if (dups.hasOwnProperty(parentName)) return
             let parentPtr = this.symTable[parentName]
-            if (parentPtr && parentPtr.$ &&
-                    (parentPtr.$.prerequisite || recurseObjects)) {
+            if (parentPtr && (parentPtr.prerequisite || recurseObjects)) {
                 // iface's prerequsite is also an interface, or it's
                 // a class and we also want to recurse classes
                 callback(parentPtr)
