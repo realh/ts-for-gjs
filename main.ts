@@ -837,19 +837,37 @@ export class GirModule {
             this.traverseInheritanceTree(parent, callback)
     }
 
-    private forEachInterface(e: GirClass, callback: ((cls: GirClass) => void)) {
+    private forEachInterface(e: GirClass, callback: ((cls: GirClass) => void),
+                            recurseObjects = false, dups = {}) {
+        const mod: GirModule = e._module ? e._module : this
+        if (e._fullSymName)
+            dups[e._fullSymName] = true
         for (const { $ } of e.implements || []) {
             let name = $.name as string
-
             if (name.indexOf(".") < 0) {
-                name = this.name + "." + name
+                name = mod.name + "." + name
             }
-
+            if (dups.hasOwnProperty(name)) continue
+            dups[name] = true
             const iface: GirClass | undefined = this.symTable[name]
-
             if (iface) {
                 callback(iface)
-                this.forEachInterface(iface, callback)
+                this.forEachInterface(iface, callback, recurseObjects, dups)
+            }
+        }
+        if (e.$.prerequisite) {
+            let parentName = e.$.prerequisite
+            if (parentName.indexOf(".") < 0) {
+                parentName = mod.name + "." + parentName
+            }
+            if (dups.hasOwnProperty(parentName)) return
+            let parentPtr = this.symTable[parentName]
+            if (parentPtr && parentPtr.$ &&
+                    (parentPtr.$.prerequisite || recurseObjects)) {
+                // iface's prerequsite is also an interface, or it's
+                // a class and we also want to recurse classes
+                callback(parentPtr)
+                this.forEachInterface(parentPtr, callback, recurseObjects, dups)
             }
         }
     }
