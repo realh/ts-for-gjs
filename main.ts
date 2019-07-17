@@ -94,6 +94,7 @@ interface GirClass extends TsForGjsExtended {
     $: {
         name: string
         parent?: string
+        prerequisite?: string
         version?: string
         // Not sure what this means
         disguised?: string
@@ -294,11 +295,14 @@ export class GirModule {
         this.symTable = dict
     }
 
-    loadInheritance(inheritanceTable) {
-        // Class hierarchy
-        for (let cls of (this.ns.class ? this.ns.class : [])) {
+    private loadHierarchy(classes, inheritanceTable) {
+        if (!classes) return
+        for (let cls of classes) {
             let parent
-            if (cls.$ && cls.$.parent) parent = cls.$.parent
+            if (cls.$ && cls.$.parent)
+                parent = cls.$.parent
+            else if (cls.$ && cls.$.prerequisite)
+                parent = cls.$.prerequisite
             if (!parent) continue
             if (!cls._fullSymName) continue
 
@@ -311,6 +315,12 @@ export class GirModule {
             arr.push(parent)
             inheritanceTable[clsName] = arr
         }
+    }
+
+    loadInheritance(inheritanceTable) {
+        // Class and interface hierarchies
+        this.loadHierarchy(this.ns.class, inheritanceTable);
+        this.loadHierarchy(this.ns.interface, inheritanceTable);
 
         // Class interface implementations
         for (let cls of (this.ns.class ? this.ns.class : [])) {
