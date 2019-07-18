@@ -13,6 +13,7 @@ interface ClassDetails {
     qualifiedName: string
     parentName?: string
     qualifiedParentName?: string
+    localParentName?: string    // qualified if its module != qualifiedName's module
 }
 
 interface GirInclude {
@@ -1042,25 +1043,38 @@ export class GirModule {
 
         let parentName: string | undefined = undefined
         let qualifiedParentName: string | undefined = undefined
+        let localParentName: string | undefined = undefined
         if (e.prerequisite) {
             parentName = e.prerequisite[0].$.name
         } else if (e.$.parent) {
             parentName = e.$.parent
         }
+        let parentMod
         if (parentName) {
             if (parentName.indexOf(".") < 0) {
                 qualifiedParentName = mod.name + "." + parentName
+                parentMod = mod.name
             } else {
                 qualifiedParentName = parentName
                 const split = parentName.split('.')
                 parentName = split[split.length - 1]
+                parentMod = split.slice(0, split.length - 1).join('.')
             }
+            localParentName = (parentMod == mod.name) ? parentName : qualifiedParentName
         }
-        return {name, qualifiedName, parentName, qualifiedParentName}
+        return {name, qualifiedName, parentName, qualifiedParentName, localParentName}
     }
 
-    // Generates a TS interface for a GObject class or interface
+    // Generates a TS interface for a GObject class or interface. By using this
+    // on classes as well as interfaces we gain compile-time checking that a
+    // class implementing a GObject interface satisifies the interface's
+    // class prerequisite.
     private exportInterfaceInternal(e: GirClass) {
+        const details = this.getClassDetails(e)
+        if (!details)
+            return []
+        const exts = new Map()
+        exts.set(details.parentName, true)
     }
 
     // Represents a record or GObject class as a Typescript class
