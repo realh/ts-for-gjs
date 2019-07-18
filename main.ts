@@ -1124,13 +1124,9 @@ export class GirModule {
             parents += ` extends ${qualifiedParentName}`;
         }
         if (e.implements) {
-            parents += " implements " + e.implements.map(i => {
-                let name = i.$.name
-                if (name && name.indexOf('.') < 0) {
-                    name = this.name + "." + name
-                }
-                return name
-            }).join(", ")
+            const impl: string[] = []
+            this.forEachImplementedLocalName(e, n => impl.push(n))
+            parents += " implements " + impl.join(',')
         }
         def.push(`export class ${name}${parents} {`)
         let localNames = {}
