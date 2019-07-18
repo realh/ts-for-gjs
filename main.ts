@@ -802,44 +802,19 @@ export class GirModule {
     }
 
     private traverseInheritanceTree(e: GirClass, callback: ((cls: GirClass) => void)) {
-        if (!e || !e.$)
+        const details = this.getClassDetails(e)
+        if (!details)
             return;
-
-        let parent: GirClass | undefined = undefined
-        let parentModule: GirModule | undefined = undefined
-
-        const mod: GirModule = e._module ? e._module : this
-        let name = e.$.name
-
-        if (name.indexOf(".") < 0) {
-            name = mod.name + "." + name
-        }
-
-        if (e.$.parent) {
-            let parentName = e.$.parent
-            let origParentName = parentName
-
-            if (parentName.indexOf(".") < 0) {
-                parentName = mod.name + "." + parentName
-            }
-
-            let parentPtr = this.symTable[parentName]
-
-            if (!parentPtr && origParentName == "Object") {
+        callback(e)
+        const {name, qualifiedName, parentName, qualifiedParentName} = details
+        if (parentName && qualifiedParentName) {
+            let parentPtr = this.symTable[qualifiedParentName]
+            if (!parentPtr && parentName == "Object") {
                 parentPtr = this.symTable["GObject.Object"]
             }
-
-            if (parentPtr) {
-                parent = parentPtr
-            } 
+            if (parentPtr)
+                this.traverseInheritanceTree(parentPtr, callback)
         }
-
-        // console.log(`${e.$.name} : ${parent && parent.$ ? parent.$.name : 'none'} : ${parentModule ? parentModule.name : 'none'}`)
-
-        callback(e)
-        
-        if (parent)
-            this.traverseInheritanceTree(parent, callback)
     }
 
     private forEachInterface(e: GirClass, callback: ((cls: GirClass) => void),
