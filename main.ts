@@ -1072,6 +1072,10 @@ export class GirModule {
                 if (!name) continue
                 if (name.indexOf('.') < 0) {
                     name = this.name + "." + name
+                } else {
+                    let [mod, local] = name.split('.')
+                    if (mod == this.name)
+                        name = local
                 }
                 callback(name)
             }
@@ -1086,8 +1090,26 @@ export class GirModule {
         const details = this.getClassDetails(e)
         if (!details)
             return []
-        const exts = new Map()
-        exts.set(details.localParentName, true)
+        const exts = new Set()
+        if (details.localParentName)
+            exts.add(details.localParentName)
+        this.forEachImplementedLocalName(e, n => exts.add(n))
+        let def: string[] = [`export interface ${details.name}`]
+        if (exts.size) {
+            def[0] += " extends " + Array.from(exts).join(", ")
+        }
+        def[0] += " {"
+
+        const localNames = {}
+
+        def = def.concat(this.processProperties(e, localNames))
+        def = def.concat(this.processFinalMethods(e, localNames))
+        def = def.concat(this.processVirtualMethods(e, localNames))
+        def = def.concat(this.processSignals(e))
+
+        def.push('}')
+
+        return def
     }
 
     // Represents a record or GObject class as a Typescript class
