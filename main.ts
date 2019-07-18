@@ -3,16 +3,16 @@ import * as lodash from 'lodash'
 import * as commander from 'commander'
 import fs = require('fs')
 
-interface ClassDetails {
-    name: string
-    isDerivedFromGObject: boolean
-    parentName?: string
-    parentNameShort?: string
-}
-
 interface TsForGjsExtended {
     _module?: GirModule
     _fullSymName?: string
+}
+
+interface ClassDetails {
+    name: string
+    qualifiedName: string
+    parentName?: string
+    qualifiedParentName?: string
 }
 
 interface GirInclude {
@@ -1047,6 +1047,45 @@ export class GirModule {
     private getStaticNew(e: GirClass): [string[], string | null] {
         let funcs = this.getStaticConstructors(e, fn => fn === "new")
         return funcs.length ? funcs[0] : [[], null]
+    }
+
+    private getClassDetails(e: GirClass): ClassDetails | null {
+        if (!e || !e.$)
+            return null;
+        let parent: GirClass | undefined = undefined
+        let parentModule: GirModule | undefined = undefined
+        const mod: GirModule = e._module ? e._module : this
+        let name = e.$.name
+        let qualifiedName
+        if (name.indexOf(".") < 0) {
+            qualifiedName = mod.name + "." + name
+        } else {
+            qualifiedName = name
+            const split = name.split('.')
+            name = split[split.length - 1]
+        }
+
+        let parentName: string | undefined = undefined
+        let qualifiedParentName: string | undefined = undefined
+        if (e.prerequisite) {
+            parentName = e.prerequisite[0].$.name
+        } else if (e.$.parent) {
+            parentName = e.$.parent
+        }
+        if (parentName) {
+            if (parentName.indexOf(".") < 0) {
+                qualifiedParentName = mod.name + "." + parentName
+            } else {
+                qualifiedParentName = parentName
+                const split = parentName.split('.')
+                parentName = split[split.length - 1]
+            }
+        }
+        return {name, qualifiedName, parentName, qualifiedParentName}
+    }
+
+    // Generates a TS interface for a GObject class or interface
+    private exportInterfaceInternal(e: GirClass) {
     }
 
     // Represents a record or GObject class as a Typescript class
