@@ -1093,23 +1093,10 @@ export class GirModule {
         if (e.$ && e.$["glib:is-gtype-struct-for"]) {
             return []   
         }
-        let name = e.$.name
-        let isDerivedFromGObject = this.isDerivedFromGObject(e)
-        let parentName: string|null = null
-
-        let counter: number = 0
-        this.traverseInheritanceTree(e, (cls) => {
-            if (counter++ != 1)
-                return
-            parentName = cls._fullSymName || null
-        })
-        let parentNameShort: string|null = parentName
-        if (parentNameShort && this.name) {
-            let s = (parentNameShort || "").split(".", 2)
-            if (s[0] === this.name) {
-                parentNameShort = s[1]
-            }
-        }
+        const details = this.getClassDetails(e)
+        if (!details) return []
+        const {name, qualifiedName, parentName, qualifiedParentName} = details
+        const isDerivedFromGObject = this.isDerivedFromGObject(e)
 
         let def: string[] = []
 
@@ -1117,8 +1104,7 @@ export class GirModule {
         if (isDerivedFromGObject) {
             let ext: string = ' '
             if (parentName)
-                ext = `extends ${parentNameShort}_ConstructProps `
-
+                ext = `extends ${qualifiedParentName}_ConstructProps `
             def.push(`export interface ${name}_ConstructProps ${ext}{`)
             let constructPropNames = {}
             if (e.property) {
@@ -1133,7 +1119,7 @@ export class GirModule {
         // Class definition starts here
         let parents = ""
         if (e.$.parent) {
-            parents += ` extends ${parentNameShort}`;
+            parents += ` extends ${qualifiedParentName}`;
         }
         if (e.implements) {
             parents += " implements " + e.implements.map(i => {
