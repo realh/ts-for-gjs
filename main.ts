@@ -1065,6 +1065,19 @@ export class GirModule {
         return {name, qualifiedName, parentName, qualifiedParentName, localParentName}
     }
 
+    private forEachImplementedLocalName(e: GirClass, callback: (name: string) => void) {
+        if (e.implements) {
+            for (const i of e.implements) {
+                let name = i.$.name
+                if (!name) continue
+                if (name.indexOf('.') < 0) {
+                    name = this.name + "." + name
+                }
+                callback(name)
+            }
+        }
+    }
+
     // Generates a TS interface for a GObject class or interface. By using this
     // on classes as well as interfaces we gain compile-time checking that a
     // class implementing a GObject interface satisifies the interface's
@@ -1074,7 +1087,7 @@ export class GirModule {
         if (!details)
             return []
         const exts = new Map()
-        exts.set(details.parentName, true)
+        exts.set(details.localParentName, true)
     }
 
     // Represents a record or GObject class as a Typescript class
