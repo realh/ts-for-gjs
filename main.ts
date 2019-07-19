@@ -1213,6 +1213,21 @@ export class GirModule {
         return def
     }
 
+    // GInterfaces can have static methods and are also associated with a
+    // concrete object used to initialise implementation classes, so provide
+    // this with a TS object (not a class).
+    private exportIfaceObject(e: GirClass) {
+        const details = this.getClassDetails(e)
+        if (!details)
+            return []
+        let def: string[] = [`const ${details.name}: {`]
+        for (const [desc, name] of this.getOtherStaticFunctions(e)) {
+            def = def.concat(desc)
+        }
+        def.push('}')
+        return def
+    }
+
     private exportObjectInternal(e: GirClass | GirClass) {
         let name = e.$.name
         let def: string[] = []
