@@ -924,7 +924,6 @@ export class GirModule {
                 if (added) {
                     def.push(`    ${aDesc[0]}`)
                 }
-                def = def.concat(aDesc)
             }
         }
         return def
