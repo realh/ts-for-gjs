@@ -1121,7 +1121,7 @@ export class GirModule {
         }
         const details = this.getClassDetails(e)
         if (!details) return []
-        const {name, qualifiedName, parentName, qualifiedParentName} = details
+        const {name, qualifiedName, parentName, localParentName} = details
         const isDerivedFromGObject = this.isDerivedFromGObject(e)
 
         let def: string[] = []
@@ -1130,7 +1130,7 @@ export class GirModule {
         if (isDerivedFromGObject) {
             let ext: string = ' '
             if (parentName)
-                ext = `extends ${qualifiedParentName}_ConstructProps `
+                ext = `extends ${localParentName}_ConstructProps `
             def.push(`export interface ${name}_ConstructProps ${ext}{`)
             let constructPropNames = {}
             if (e.property) {
@@ -1145,7 +1145,7 @@ export class GirModule {
         // Class definition starts here
         let parents = ""
         if (e.$.parent) {
-            parents += ` extends ${qualifiedParentName}`;
+            parents += ` extends ${localParentName}`;
         }
         if (e.implements) {
             const impl: string[] = []
