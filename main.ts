@@ -1458,11 +1458,15 @@ export class GirModule {
     }
 
     exportInterface(e: GirClass) {
-        return this.exportObjectInternal(e)
+        let def = this.exportInterfaceInternal(e)
+        def = def.concat(this.exportIfaceObject(e))
+        return def
     }
 
     exportClass(e: GirClass) {
-        return this.exportObjectInternal(e)
+        let def = this.exportInterfaceInternal(e)
+        def = def.concat(this.exportClassInternal(e))
+        return def
     }
 
     exportJs(outStream: NodeJS.WritableStream) {
@@ -1514,8 +1518,10 @@ export class GirModule {
                 out = out.concat(this.exportCallback(e))
 
         if (this.ns.interface)
-            for (let e of this.ns.interface)
-                out = out.concat(this.exportInterface(e))
+            for (let e of this.ns.interface) {
+                out = out.concat(this.exportInterfaceInternal(e))
+                out = out.concat(this.exportIfaceObject(e))
+            }
 
         // Extra interfaces used to help define GObject classes in js; these
         // aren't part of gi.
@@ -1545,12 +1551,14 @@ export class GirModule {
         }
 
         if (this.ns.class)
-            for (let e of this.ns.class)
-                out = out.concat(this.exportInterface(e))
+            for (let e of this.ns.class) {
+                out = out.concat(this.exportInterfaceInternal(e))
+                out = out.concat(this.exportClassInternal(e))
+            }
 
         if (this.ns.record)
             for (let e of this.ns.record)
-                out = out.concat(this.exportInterface(e))
+                out = out.concat(this.exportClass(e))
 
         if (this.ns.union)
             for (let e of this.ns.union)
