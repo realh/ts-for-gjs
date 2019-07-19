@@ -1013,7 +1013,7 @@ export class GirModule {
         let fns: [string[], string][] = []
         if (e.function) {
             for (let f of e.function) {
-                let [desc, funcName] = this.getFunction(f, "    static")
+                let [desc, funcName] = this.getFunction(f, "    static ")
                 if (funcName && funcName !== "new")
                     fns.push([desc, funcName])
             }
