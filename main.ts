@@ -8,6 +8,14 @@ interface TsForGjsExtended {
     _fullSymName?: string
 }
 
+interface ClassDetails {
+    name: string
+    qualifiedName: string
+    parentName?: string
+    qualifiedParentName?: string
+    localParentName?: string    // qualified if its module != qualifiedName's module
+}
+
 interface GirInclude {
     $: {
         name: string
@@ -21,6 +29,11 @@ interface GirDoc {
     }
 }
 interface GirImplements {
+    $: {
+        "name"?: string
+    }
+}
+interface GirPrerequisite {
     $: {
         "name"?: string
     }
@@ -102,6 +115,7 @@ interface GirClass extends TsForGjsExtended {
     "virtual-method"?: GirFunction[]
     "constructor"?: GirFunction[] | Function
     implements?: GirImplements[]
+    prerequisite?: GirPrerequisite[]
 
     _module?: GirModule
 }
@@ -287,11 +301,14 @@ export class GirModule {
         this.symTable = dict
     }
 
-    loadInheritance(inheritanceTable) {
-        // Class hierarchy
-        for (let cls of (this.ns.class ? this.ns.class : [])) {
-            let parent
-            if (cls.$ && cls.$.parent) parent = cls.$.parent
+    private loadHierarchy(classes, inheritanceTable) {
+        if (!classes) return
+        for (let cls of classes) {
+            let parent: string | null = null
+            if (cls.prerequisite)
+                parent = cls.prerequisite[0].$.name
+            else if (cls.$ && cls.$.parent)
+                parent = cls.$.parent
             if (!parent) continue
             if (!cls._fullSymName) continue
 
@@ -304,6 +321,12 @@ export class GirModule {
             arr.push(parent)
             inheritanceTable[clsName] = arr
         }
+    }
+
+    loadInheritance(inheritanceTable) {
+        // Class and interface hierarchies
+        this.loadHierarchy(this.ns.class, inheritanceTable);
+        this.loadHierarchy(this.ns.interface, inheritanceTable);
 
         // Class interface implementations
         for (let cls of (this.ns.class ? this.ns.class : [])) {
@@ -720,16 +743,44 @@ export class GirModule {
         return [desc, funcName]
     }
 
-    private getSignalFunc(e: GirFunction, clsName: string) {
-        let sigName = e.$.name
-        let [retType, outArrayLengthIndex] = this.getReturnType(e)
-        let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex)
-        let paramComma = params.length > 0 ? ', ' : ''
-
-         return [`    connect(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
-            `    connect_after(sigName: "${sigName}", callback: ((obj: ${clsName}${paramComma}${params}) => ${retType})): number`,
-            `    emit(sigName: "${sigName}"${paramComma}${params}): void`
-         ]
+    // 1. Signal details are provided by a GirFunction
+    private getSignalFunc(e: GirFunction, clsName: string)
+    // 2. Signal details are provided as signal name, target class name,
+    //    params (excluding arg1: emitter) and return type as strings
+    private getSignalFunc(sigName: string, clsName: string, params: string,
+                          retType: string)
+    // 3. Gets the standard generic signal functions for a named class
+    private getSignalFunc(clsName: string)
+    // 4. Implementation
+    private getSignalFunc(signal: string | GirFunction, clsName?: string,
+                          params?: string, retType?: string) {
+        if (typeof signal != "string") {
+            let outArrayLengthIndex = 0;
+            let outParams: string[] = [];
+            [retType, outArrayLengthIndex] = this.getReturnType(signal);
+            [params, outParams] = this.getParameters(signal.parameters,
+                                                     outArrayLengthIndex);
+            signal = signal.$.name;
+        } else if (!clsName) {
+            clsName = signal
+            signal = "string"
+        } else {
+            signal = `"${signal}"`
+        }
+        let callback
+        let emit
+        if (params !== undefined) {
+            let paramComma = params.length > 0 ? ', ' : ''
+            callback = `(obj: ${clsName}${paramComma}${params}) => ${retType}`
+            emit = `${paramComma}${params}`
+        } else {
+            callback = "Function"
+            emit = ", ...args: any[]"
+        }
+        return [`    connect(sigName: ${signal}, callback: ${callback}): number`,
+            `    connect_after(sigName: ${signal}, callback: ${callback}): number`,
+            `    emit(sigName: ${signal}${emit}): void`
+        ]
     }
 
     exportFunction(e: GirFunction) {
@@ -752,60 +803,67 @@ export class GirModule {
     }
 
     private traverseInheritanceTree(e: GirClass, callback: ((cls: GirClass) => void)) {
-        if (!e || !e.$)
+        const details = this.getClassDetails(e)
+        if (!details)
             return;
-
-        let parent: GirClass | undefined = undefined
-        let parentModule: GirModule | undefined = undefined
-
-        const mod: GirModule = e._module ? e._module : this
-        let name = e.$.name
-
-        if (name.indexOf(".") < 0) {
-            name = mod.name + "." + name
+        callback(e)
+        const {name, qualifiedName, parentName, qualifiedParentName} = details
+        if (parentName && qualifiedParentName) {
+            let parentPtr = this.symTable[qualifiedParentName]
+            if (!parentPtr && parentName == "Object") {
+                parentPtr = this.symTable["GObject.Object"]
+            }
+            if (parentPtr)
+                this.traverseInheritanceTree(parentPtr, callback)
         }
+    }
 
-        if (e.$.parent) {
-            let parentName = e.$.parent
-            let origParentName = parentName
-
+    private forEachInterface(e: GirClass, callback: ((cls: GirClass) => void),
+                            recurseObjects = false, dups = {}) {
+        const mod: GirModule = e._module ? e._module : this
+        if (e._fullSymName)
+            dups[e._fullSymName] = true
+        for (const { $ } of e.implements || []) {
+            let name = $.name as string
+            if (name.indexOf(".") < 0) {
+                name = mod.name + "." + name
+            }
+            if (dups.hasOwnProperty(name)) continue
+            dups[name] = true
+            const iface: GirClass | undefined = this.symTable[name]
+            if (iface) {
+                callback(iface)
+                this.forEachInterface(iface, callback, recurseObjects, dups)
+            }
+        }
+        if (e.prerequisite) {
+            let parentName = e.prerequisite[0].$.name
+            if (!parentName)
+                return
             if (parentName.indexOf(".") < 0) {
                 parentName = mod.name + "." + parentName
             }
-
+            if (dups.hasOwnProperty(parentName)) return
             let parentPtr = this.symTable[parentName]
-
-            if (!parentPtr && origParentName == "Object") {
-                parentPtr = this.symTable["GObject.Object"]
+            if (parentPtr && (parentPtr.prerequisite || recurseObjects)) {
+                // iface's prerequsite is also an interface, or it's
+                // a class and we also want to recurse classes
+                callback(parentPtr)
+                this.forEachInterface(parentPtr, callback, recurseObjects, dups)
             }
-
-            if (parentPtr) {
-                parent = parentPtr
-            } 
         }
-
-        // console.log(`${e.$.name} : ${parent && parent.$ ? parent.$.name : 'none'} : ${parentModule ? parentModule.name : 'none'}`)
-
-        callback(e)
-        
-        if (parent)
-            this.traverseInheritanceTree(parent, callback)
     }
 
-    private forEachInterface(e: GirClass, callback: ((cls: GirClass) => void)) {
-        for (const { $ } of e.implements || []) {
-            let name = $.name as string
+    private forEachSuperAndInterface(e: GirClass,
+                                     callback: ((cls: GirClass) => void)) {
+        this.traverseInheritanceTree(e, callback)
+        this.forEachInterface(e, callback)
+    }
 
-            if (name.indexOf(".") < 0) {
-                name = this.name + "." + name
-            }
-
-            const iface: GirClass | undefined = this.symTable[name]
-
-            if (iface) {
-                callback(iface)
-            }
-        }
+    private forEachInterfaceAndSelf(e: GirClass,
+                                    callback: ((cls: GirClass) => void)) {
+        callback(e)
+        this.forEachInterface(e, callback)
     }
 
     private isDerivedFromGObject(e: GirClass): boolean {
@@ -816,6 +874,358 @@ export class GirModule {
             }
         })
         return ret
+    }
+
+    private checkName(desc: string[], name: string | null, localNames: any):
+            [string[], boolean] {
+        if (!desc || desc.length == 0)
+            return [[], false]
+
+        if (!name) {
+            // console.error(`No name for ${desc}`)
+            return [[], false]
+        }
+
+        if (localNames[name]) {
+            // console.warn(`Name ${name} already defined (${desc})`)
+            return [[], false]
+        }
+
+        localNames[name] = 1
+        return [desc, true]
+    }
+
+    private processProperties(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        if (cls.property) {
+            let prefix = "GObject."
+            if (this.name == "GObject") prefix = ""
+            def.push(`    // Properties of ${cls._fullSymName}`)
+            for (let p of cls.property) {
+                let [desc, name, origName] = this.getProperty(p)
+                let [aDesc, added] = this.checkName(desc, name, localNames)
+                def = def.concat(aDesc)
+                if (added && origName) {
+                    def.concat(this.getSignalFunc(`notify::${p}`, name || "",
+                        `pspec: ${prefix}ParamSpec)`, "void"))
+                }
+            }
+        }
+        return def
+    }
+
+    private processFields(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        if (cls.field) {
+            def.push(`    // Fields of ${cls._fullSymName}`)
+            for (let f of cls.field) {
+                let [desc, name] = this.getVariable(f, false, false)
+                let [aDesc, added] = this.checkName(desc, name, localNames)
+                if (added) {
+                    def.push(`    ${aDesc[0]}`)
+                }
+                def = def.concat(aDesc)
+            }
+        }
+        return def
+    }
+
+    private processFinalMethods(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        if (cls.method) {
+            def.push(`    // Final methods of ${cls._fullSymName}`)
+            for (let f of cls.method) {
+                let [desc, name] = this.getFunction(f, "    ")
+                def = def.concat(this.checkName(desc, name, localNames)[0])
+            }
+        }
+        return def
+    }
+
+    private processVirtualMethods(cls: GirClass, localNames: any): string[] {
+        let def: string[] = []
+        let vmeth = cls["virtual-method"]
+        if (vmeth) {
+            def.push(`    // Virtual methods of ${cls._fullSymName}`)
+            for (let f of vmeth) {
+                let [desc, name] = this.getFunction(f, "    ", "vfunc_")
+                desc = this.checkName(desc, name, localNames)[0]
+                if (desc[0]) {
+                    desc[0] = desc[0].replace("(", "?(")
+                }
+                def = def.concat(desc)
+            }
+        }
+        return def
+    }
+
+    private processSignals(cls: GirClass): string[] {
+        let def: string[] = []
+        let signals = cls["glib:signal"]
+        if (signals) {
+            def.push(`    // Signals of ${cls._fullSymName}`)
+            for (let s of signals)
+                def = def.concat(this.getSignalFunc(s, cls.$.name))
+        }
+        return def
+    }
+
+    // If a static method has the same name as one in a superclass, but with
+    // incompatible parameters or return types, we need to provide a generic
+    // form. For some reason a signature of <T, V>(arg?: T): V covers all cases.
+    // It's better for return type to be a generic too, because if this
+    // overload is abused it results in V being "unknown", and should cause a
+    // compilation error. The error will be in the wrong place, but it's better
+    // than nothing.
+    // See issue #12.
+    private getStaticOverloads(e: GirClass, desc: string[], funcName: string,
+            getFunctions: (cls: GirClass) => [string[], string | null][]):
+            string[]
+    {
+        let clash = false
+        this.traverseInheritanceTree(e, (cls: GirClass) => {
+            if (clash) return;
+            const funcs = getFunctions(cls)
+            for (const [desc2, funcName2] of funcs) {
+                if (funcName === funcName2 && desc != desc2) {
+                    clash = true
+                    break
+                }
+            }
+        });
+        return clash ? [`    static ${funcName}<T, V>(arg?: T): V`] : []
+    }
+
+    private getStaticConstructors(e: GirClass,
+                                filter?: (funcName: string) => boolean):
+            [string[], string | null][]
+    {
+        let funcs: GirFunction[] = (e['constructor'] || []) as GirFunction[]
+        let ctors = funcs.map(f =>
+            this.getConstructorFunction(e.$.name, f, "    static "))
+        if (filter)
+            ctors = ctors.filter(([desc, funcName]) => funcName && filter(funcName))
+        return ctors
+    }
+
+    private getOtherStaticFunctions(e: GirClass): [string[], string][] {
+        let fns: [string[], string][] = []
+        if (e.function) {
+            for (let f of e.function) {
+                let [desc, funcName] = this.getFunction(f, "    static")
+                if (funcName && funcName !== "new")
+                    fns.push([desc, funcName])
+            }
+        }
+        return fns
+    }
+
+    private getStaticNew(e: GirClass): [string[], string | null] {
+        let funcs = this.getStaticConstructors(e, fn => fn === "new")
+        return funcs.length ? funcs[0] : [[], null]
+    }
+
+    private getClassDetails(e: GirClass): ClassDetails | null {
+        if (!e || !e.$)
+            return null;
+        let parent: GirClass | undefined = undefined
+        let parentModule: GirModule | undefined = undefined
+        const mod: GirModule = e._module ? e._module : this
+        let name = e.$.name
+        let qualifiedName
+        if (name.indexOf(".") < 0) {
+            qualifiedName = mod.name + "." + name
+        } else {
+            qualifiedName = name
+            const split = name.split('.')
+            name = split[split.length - 1]
+        }
+
+        let parentName: string | undefined = undefined
+        let qualifiedParentName: string | undefined = undefined
+        let localParentName: string | undefined = undefined
+        if (e.prerequisite) {
+            parentName = e.prerequisite[0].$.name
+        } else if (e.$.parent) {
+            parentName = e.$.parent
+        }
+        let parentMod
+        if (parentName) {
+            if (parentName.indexOf(".") < 0) {
+                qualifiedParentName = mod.name + "." + parentName
+                parentMod = mod.name
+            } else {
+                qualifiedParentName = parentName
+                const split = parentName.split('.')
+                parentName = split[split.length - 1]
+                parentMod = split.slice(0, split.length - 1).join('.')
+            }
+            localParentName = (parentMod == mod.name) ? parentName : qualifiedParentName
+        }
+        return {name, qualifiedName, parentName, qualifiedParentName, localParentName}
+    }
+
+    private forEachImplementedLocalName(e: GirClass, callback: (name: string) => void) {
+        if (e.implements) {
+            for (const i of e.implements) {
+                let name = i.$.name
+                if (!name) continue
+                if (name.indexOf('.') < 0) {
+                    name = this.name + "." + name
+                } else {
+                    let [mod, local] = name.split('.')
+                    if (mod == this.name)
+                        name = local
+                }
+                callback(name)
+            }
+        }
+    }
+
+    // Generates a TS interface for a GObject class or interface. By using this
+    // on classes as well as interfaces we gain compile-time checking that a
+    // class implementing a GObject interface satisifies the interface's
+    // class prerequisite.
+    private exportInterfaceInternal(e: GirClass) {
+        const details = this.getClassDetails(e)
+        if (!details)
+            return []
+        const exts = new Set()
+        if (details.localParentName)
+            exts.add(details.localParentName)
+        this.forEachImplementedLocalName(e, n => exts.add(n))
+        let def: string[] = [`export interface ${details.name}`]
+        if (exts.size) {
+            def[0] += " extends " + Array.from(exts).join(", ")
+        }
+        def[0] += " {"
+
+        const localNames = {}
+
+        def = def.concat(this.processProperties(e, localNames))
+        def = def.concat(this.processFields(e, localNames))
+        def = def.concat(this.processFinalMethods(e, localNames))
+        def = def.concat(this.processVirtualMethods(e, localNames))
+        def = def.concat(this.processSignals(e))
+
+        def.push('}')
+
+        return def
+    }
+
+    // Represents a record or GObject class as a Typescript class
+    private exportClassInternal(e: GirClass) {
+        if (e.$ && e.$["glib:is-gtype-struct-for"]) {
+            return []   
+        }
+        const details = this.getClassDetails(e)
+        if (!details) return []
+        const {name, qualifiedName, parentName, qualifiedParentName} = details
+        const isDerivedFromGObject = this.isDerivedFromGObject(e)
+
+        let def: string[] = []
+
+        // Properties for construction
+        if (isDerivedFromGObject) {
+            let ext: string = ' '
+            if (parentName)
+                ext = `extends ${qualifiedParentName}_ConstructProps `
+            def.push(`export interface ${name}_ConstructProps ${ext}{`)
+            let constructPropNames = {}
+            if (e.property) {
+                for (let p of e.property) {
+                    let [desc, name] = this.getProperty(p, true)
+                    def = def.concat(this.checkName(desc, name, constructPropNames)[0])
+                }
+            }
+            def.push("}")
+        }
+
+        // Class definition starts here
+        let parents = ""
+        if (e.$.parent) {
+            parents += ` extends ${qualifiedParentName}`;
+        }
+        if (e.implements) {
+            const impl: string[] = []
+            this.forEachImplementedLocalName(e, n => impl.push(n))
+            parents += " implements " + impl.join(',')
+        }
+        def.push(`export class ${name}${parents} {`)
+        let localNames = {}
+        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
+            def = def.concat(this.processProperties(cls, localNames))
+        })
+        def = def.concat(this.processFields(e, localNames))
+        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
+            def = def.concat(this.processFinalMethods(cls, localNames))
+        })
+        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
+            def = def.concat(this.processVirtualMethods(cls, localNames))
+        })
+        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
+            def = def.concat(this.processSignals(cls))
+        })
+
+        // JS constructor(s) and signal methods
+        if (isDerivedFromGObject) {
+            def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
+            def.push(`    constructor (config?: ${name}_ConstructProps)`)
+            def.push(`    _init (config?: ${name}_ConstructProps): void`)
+            def.concat(this.getSignalFunc(name))
+        } else {
+            let [desc, funcName] = this.getStaticNew(e)
+            if (funcName) {
+                def = def.concat(desc)
+                def = def.concat(this.getStaticOverloads(e, desc, funcName,
+                        cls => [this.getStaticNew(e)]))
+                const jsStyleCtor = desc[0]
+                    .replace("static new", "constructor")
+                    .replace(/:[^:]+$/, "")
+                def = def.concat(jsStyleCtor)
+            }
+        }
+
+        // Records, classes and interfaces all have a static name
+        def.push("    static name: string")
+
+        // Static methods, <constructor> and <function>
+        let stc: string[] = []
+        let ctors = this.getStaticConstructors(e, fn => fn !== "new")
+        if (ctors) {
+            for (let [desc, funcName] of ctors) {
+                if (!funcName) continue
+                stc = stc.concat(desc)
+                stc = stc.concat(this.getStaticOverloads(e, desc, funcName,
+                    cls => this.getStaticConstructors(cls, fn => fn !== "new")))
+            }
+        }
+        for (let [desc, funcName] of this.getOtherStaticFunctions(e)) {
+            stc = stc.concat(desc)
+            stc = stc.concat(this.getStaticOverloads(e, desc, funcName,
+                cls => this.getOtherStaticFunctions(cls)))
+        }
+        if (stc.length > 0) {
+            def = def.concat(stc)
+        }
+
+        def.push("}")
+        return def
+    }
+
+    // GInterfaces can have static methods and are also associated with a
+    // concrete object used to initialise implementation classes, so provide
+    // this with a TS object (not a class).
+    private exportIfaceObject(e: GirClass) {
+        const details = this.getClassDetails(e)
+        if (!details)
+            return []
+        let def: string[] = [`const ${details.name}: {`]
+        for (const [desc, name] of this.getOtherStaticFunctions(e)) {
+            def = def.concat(desc)
+        }
+        def.push('}')
+        return def
     }
 
     private exportObjectInternal(e: GirClass | GirClass) {
@@ -1048,11 +1458,15 @@ export class GirModule {
     }
 
     exportInterface(e: GirClass) {
-        return this.exportObjectInternal(e)
+        let def = this.exportInterfaceInternal(e)
+        def = def.concat(this.exportIfaceObject(e))
+        return def
     }
 
     exportClass(e: GirClass) {
-        return this.exportObjectInternal(e)
+        let def = this.exportInterfaceInternal(e)
+        def = def.concat(this.exportClassInternal(e))
+        return def
     }
 
     exportJs(outStream: NodeJS.WritableStream) {
@@ -1104,8 +1518,10 @@ export class GirModule {
                 out = out.concat(this.exportCallback(e))
 
         if (this.ns.interface)
-            for (let e of this.ns.interface)
-                out = out.concat(this.exportInterface(e))
+            for (let e of this.ns.interface) {
+                out = out.concat(this.exportInterfaceInternal(e))
+                out = out.concat(this.exportIfaceObject(e))
+            }
 
         // Extra interfaces used to help define GObject classes in js; these
         // aren't part of gi.
@@ -1140,12 +1556,14 @@ export class GirModule {
         }
 
         if (this.ns.class)
-            for (let e of this.ns.class)
-                out = out.concat(this.exportInterface(e))
+            for (let e of this.ns.class) {
+                out = out.concat(this.exportInterfaceInternal(e))
+                out = out.concat(this.exportClassInternal(e))
+            }
 
         if (this.ns.record)
             for (let e of this.ns.record)
-                out = out.concat(this.exportInterface(e))
+                out = out.concat(this.exportClass(e))
 
         if (this.ns.union)
             for (let e of this.ns.union)
