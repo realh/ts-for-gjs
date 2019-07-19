@@ -1,6 +1,6 @@
 "use strict";
-exports.__esModule = true;
-var inheritanceTable = {
+Object.defineProperty(exports, "__esModule", { value: true });
+let inheritanceTable = {
     'Gtk.AboutDialog': ['Gtk.Dialog', 'Atk.ImplementorIface', 'Gtk.Buildable', 'Gtk.Window', 'Gtk.Bin', 'Gtk.Container', 'Gtk.Widget', 'GObject.InitiallyUnowned', 'GObject.Object'],
     'Gtk.AccelGroup': ['GObject.Object'],
     'Gtk.AccelLabel': ['Gtk.Label', 'Atk.ImplementorIface', 'Gtk.Buildable', 'Gtk.Misc', 'Gtk.Widget', 'GObject.InitiallyUnowned', 'GObject.Object'],
@@ -598,27 +598,26 @@ var inheritanceTable = {
     'Gda.TreeMgrTables': ['Gda.TreeManager', 'GObject.Object'],
     'Gda.TreeNode': ['GObject.Object'],
     'Gda.XaTransaction': ['GObject.Object'],
-    'Notify.Notification': ['GObject.Object']
+    'Notify.Notification': ['GObject.Object'],
 };
 /** Casts between derived classes, performing a run-time type-check
  * and raising an exception if the cast fails. Allows casting to implemented
  * interfaces, too.
  */
 function giCast(from_, to_) {
-    var desc = from_.toString();
-    var clsName = null;
-    for (var _i = 0, _a = desc.split(" "); _i < _a.length; _i++) {
-        var k = _a[_i];
+    let desc = from_.toString();
+    let clsName = null;
+    for (let k of desc.split(" ")) {
         if (k.substring(0, 7) == "GIName:") {
             clsName = k.substring(7);
             break;
         }
     }
-    var toName = to_.name.replace("_", ".");
+    let toName = to_.name.replace("_", ".");
     if (toName === clsName)
         return from_;
     if (clsName) {
-        var parents = inheritanceTable[clsName];
+        let parents = inheritanceTable[clsName];
         if (parents) {
             if (parents.indexOf(toName) >= 0)
                 return from_;

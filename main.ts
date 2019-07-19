@@ -1000,7 +1000,9 @@ export class GirModule {
                                 filter?: (funcName: string) => boolean):
             [string[], string | null][]
     {
-        let funcs: GirFunction[] = (e['constructor'] || []) as GirFunction[]
+        let funcs = e['constructor']
+        if (!Array.isArray(funcs))
+            return [[[], null]]
         let ctors = funcs.map(f =>
             this.getConstructorFunction(e.$.name, f, "    static "))
         if (filter)
