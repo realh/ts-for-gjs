@@ -1221,7 +1221,7 @@ export class GirModule {
         const details = this.getClassDetails(e)
         if (!details)
             return []
-        let def: string[] = [`const ${details.name}: {`]
+        let def: string[] = [`export const ${details.name}: {`]
         for (const [desc, name] of this.getOtherStaticFunctions(e)) {
             def = def.concat(desc)
         }
