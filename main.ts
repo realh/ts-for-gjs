@@ -1174,7 +1174,7 @@ export class GirModule {
             def = def.concat(this.processSignals(cls))
         })
 
-        // JS constructor(s) and signal methods
+        // JS constructor(s)
         if (isDerivedFromGObject) {
             def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
             def.push(`    constructor (config?: ${name}_ConstructProps)`)
@@ -1221,12 +1221,14 @@ export class GirModule {
 
     // GInterfaces can have static methods and are also associated with a
     // concrete object used to initialise implementation classes, so provide
-    // this with a TS object (not a class).
+    // this as a TS object (not a class).
     private exportIfaceObject(e: GirClass) {
         const details = this.getClassDetails(e)
         if (!details)
             return []
         let def: string[] = [`export const ${details.name}: {`]
+        def.push(`    $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
+        def.push(`    name: string`)
         for (const [desc, name] of this.getOtherStaticFunctions(e)) {
             def = def.concat(desc)
         }
