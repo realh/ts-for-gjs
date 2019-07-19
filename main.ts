@@ -1071,9 +1071,7 @@ export class GirModule {
             for (const i of e.implements) {
                 let name = i.$.name
                 if (!name) continue
-                if (name.indexOf('.') < 0) {
-                    name = this.name + "." + name
-                } else {
+                if (name.indexOf('.') >= 0) {
                     let [mod, local] = name.split('.')
                     if (mod == this.name)
                         name = local
