@@ -777,7 +777,8 @@ export class GirModule {
             callback = "Function"
             emit = ", ...args: any[]"
         }
-        return [`    connect(sigName: ${signal}, callback: ${callback}): number`,
+        return [
+            `    connect(sigName: ${signal}, callback: ${callback}): number`,
             `    connect_after(sigName: ${signal}, callback: ${callback}): number`,
             `    emit(sigName: ${signal}${emit}): void`
         ]
@@ -965,6 +966,8 @@ export class GirModule {
             def.push(`    // Signals of ${cls._fullSymName}`)
             for (let s of signals)
                 def = def.concat(this.getSignalFunc(s, cls.$.name))
+            def.push("    // Generic signal methods")
+            def = def.concat(this.getSignalFunc(cls.$.name))
         }
         return def
     }
@@ -1176,7 +1179,6 @@ export class GirModule {
             def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
             def.push(`    constructor (config?: ${name}_ConstructProps)`)
             def.push(`    _init (config?: ${name}_ConstructProps): void`)
-            def.concat(this.getSignalFunc(name))
         } else {
             let [desc, funcName] = this.getStaticNew(e)
             if (funcName) {
