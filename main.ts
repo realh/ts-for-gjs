@@ -982,8 +982,13 @@ export class GirModule {
             string[]
     {
         let clash = false
+        let bottom = true
         this.traverseInheritanceTree(e, (cls: GirClass) => {
             if (clash) return;
+            if (bottom) {
+                bottom = true
+                return
+            }
             const funcs = getFunctions(cls)
             for (const [desc2, funcName2] of funcs) {
                 if (funcName === funcName2 && desc != desc2) {
