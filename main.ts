@@ -1017,11 +1017,11 @@ export class GirModule {
         return ctors
     }
 
-    private getOtherStaticFunctions(e: GirClass): [string[], string][] {
+    private getOtherStaticFunctions(e: GirClass, stat = true): [string[], string][] {
         let fns: [string[], string][] = []
         if (e.function) {
             for (let f of e.function) {
-                let [desc, funcName] = this.getFunction(f, "    static ")
+                let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ")
                 if (funcName && funcName !== "new")
                     fns.push([desc, funcName])
             }
@@ -1229,7 +1229,7 @@ export class GirModule {
         let def: string[] = [`export const ${details.name}: {`]
         def.push(`    $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
         def.push(`    name: string`)
-        for (const [desc, name] of this.getOtherStaticFunctions(e)) {
+        for (const [desc, name] of this.getOtherStaticFunctions(e, false)) {
             def = def.concat(desc)
         }
         def.push('}')
