@@ -760,7 +760,7 @@ export class GirModule {
             [retType, outArrayLengthIndex] = this.getReturnType(signal);
             [params, outParams] = this.getParameters(signal.parameters,
                                                      outArrayLengthIndex);
-            signal = signal.$.name;
+            signal = `"${signal.$.name}"`;
         } else if (!clsName) {
             clsName = signal
             signal = "string"
