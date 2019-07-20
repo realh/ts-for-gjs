@@ -989,7 +989,7 @@ export class GirModule {
         this.traverseInheritanceTree(e, (cls: GirClass) => {
             if (clash) return;
             if (bottom) {
-                bottom = true
+                bottom = false
                 return
             }
             const funcs = getFunctions(cls)
