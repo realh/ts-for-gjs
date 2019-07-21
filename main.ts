@@ -1008,13 +1008,13 @@ export class GirModule {
             let mod = cls._module || this
             const funcs = getFunctions(mod, cls)
             for (const [desc2, funcName2] of funcs) {
-                if (funcName === funcName2 && desc != desc2) {
+                if (funcName === funcName2 && desc !== desc2) {
                     clash = true
                     break
                 }
             }
         });
-        const stat = desc.indexOf("    static") == 0 ? "static " : ""
+        const stat = (clash && desc.indexOf("    static") == 0) ? "static " : ""
         return clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
     }
 
