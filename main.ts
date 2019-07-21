@@ -936,7 +936,13 @@ export class GirModule {
             def.push(`    // Final methods of ${cls._fullSymName}`)
             for (let f of cls.method) {
                 let [desc, name] = this.getFunction(f, "    ")
-                def = def.concat(this.checkName(desc, name, localNames)[0])
+                desc = this.checkName(desc, name, localNames)[0]
+                if (name && desc.length) {
+                    def = def.concat(desc)
+                    def = def.concat(this.getOverloads(cls, desc, name, e => {
+                        return (e.method || []).map(f => this.getFunction(f, "    "))
+                    }))
+                }
             }
         }
         return def
@@ -972,7 +978,7 @@ export class GirModule {
         return def
     }
 
-    // If a static method has the same name as one in a superclass, but with
+    // If a method has the same name as one in a superclass, but with
     // incompatible parameters or return types, we need to provide a generic
     // form. For some reason a signature of <T, V>(arg?: T): V covers all cases.
     // It's better for return type to be a generic too, because if this
@@ -980,7 +986,7 @@ export class GirModule {
     // compilation error. The error will be in the wrong place, but it's better
     // than nothing.
     // See issue #12.
-    private getStaticOverloads(e: GirClass, desc: string[], funcName: string,
+    private getOverloads(e: GirClass, desc: string[], funcName: string,
             getFunctions: (cls: GirClass) => [string[], string | null][]):
             string[]
     {
@@ -1183,7 +1189,7 @@ export class GirModule {
             let [desc, funcName] = this.getStaticNew(e)
             if (funcName) {
                 def = def.concat(desc)
-                def = def.concat(this.getStaticOverloads(e, desc, funcName,
+                def = def.concat(this.getOverloads(e, desc, funcName,
                         cls => [this.getStaticNew(e)]))
                 const jsStyleCtor = desc[0]
                     .replace("static new", "constructor")
@@ -1202,13 +1208,13 @@ export class GirModule {
             for (let [desc, funcName] of ctors) {
                 if (!funcName) continue
                 stc = stc.concat(desc)
-                stc = stc.concat(this.getStaticOverloads(e, desc, funcName,
+                stc = stc.concat(this.getOverloads(e, desc, funcName,
                     cls => this.getStaticConstructors(cls, fn => fn !== "new")))
             }
         }
         for (let [desc, funcName] of this.getOtherStaticFunctions(e)) {
             stc = stc.concat(desc)
-            stc = stc.concat(this.getStaticOverloads(e, desc, funcName,
+            stc = stc.concat(this.getOverloads(e, desc, funcName,
                 cls => this.getOtherStaticFunctions(cls)))
         }
         if (stc.length > 0) {
