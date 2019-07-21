@@ -937,10 +937,10 @@ export class GirModule {
         return def
     }
 
-    private processFinalMethods(cls: GirClass, localNames: any): string[] {
+    private processInstanceMethods(cls: GirClass, localNames: any): string[] {
         let def: string[] = []
         if (cls.method) {
-            def.push(`    // Final methods of ${cls._fullSymName}`)
+            def.push(`    // Non-virtual instance methods of ${cls._fullSymName}`)
             for (let f of cls.method) {
                 let [desc, name] = this.getFunction(f, "    ")
                 desc = this.checkName(desc, name, localNames)[0]
@@ -1127,7 +1127,7 @@ export class GirModule {
 
         def = def.concat(this.processProperties(e, localNames))
         def = def.concat(this.processFields(e, localNames))
-        def = def.concat(this.processFinalMethods(e, localNames))
+        def = def.concat(this.processInstanceMethods(e, localNames))
         def = def.concat(this.processVirtualMethods(e, localNames))
         def = def.concat(this.processSignals(e))
 
@@ -1181,7 +1181,7 @@ export class GirModule {
         })
         def = def.concat(this.processFields(e, localNames))
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
-            def = def.concat(this.processFinalMethods(cls, localNames))
+            def = def.concat(this.processInstanceMethods(cls, localNames))
         })
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
             def = def.concat(this.processVirtualMethods(cls, localNames))
