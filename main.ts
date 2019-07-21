@@ -1014,7 +1014,8 @@ export class GirModule {
                 }
             }
         });
-        return clash ? [`    static ${funcName}<T, V>(arg?: T): V`] : []
+        const stat = desc.indexOf("    static") == 0 ? "static " : ""
+        return clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
     }
 
     private getStaticConstructors(e: GirClass,
