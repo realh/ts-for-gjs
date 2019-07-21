@@ -946,9 +946,28 @@ export class GirModule {
                 desc = this.checkName(desc, name, localNames)[0]
                 if (name && desc.length) {
                     def = def.concat(desc)
-                    def = def.concat(this.getOverloads(cls, desc, name, (mod, e) => {
+                    let overloads = this.getOverloads(cls, desc, name, (mod, e) => {
                         return (e.method || []).map(f => mod.getFunction(f, "    ", null, this))
-                    }))
+                    })
+                    if (overloads.length) {
+                        console.warn(`${cls._fullSymName}.${f.$.name} overloads a superclass method`)
+                    }
+                    def = def.concat(overloads)
+                    overloads = this.getOverloads(cls, desc, name, (mod, e) => {
+                        let methods: [string[], string | null][] = []
+                        this.forEachInterface(e, sup => {
+                            for (const meth of (e.method || [])) {
+                                methods.push(mod.getFunction(meth, "    ", null, this))
+                            }
+                        })
+                        return methods
+                    })
+                    if (overloads.length) {
+                        // This makes the method unsafe to use, we can't reliably
+                        // know which interface is implemented
+                        console.warn(`${cls._fullSymName}.${f.$.name} incorrectly overloads a method from another interface`)
+                    }
+                    def = def.concat(overloads)
                 }
             }
         }
