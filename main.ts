@@ -353,7 +353,11 @@ export class GirModule {
         }
     }
 
-    private typeLookup(e: GirVariable) {
+    // targetMod is the module the typename is going to be used in, which may
+    // be different from the module that defines the type
+    private typeLookup(e: GirVariable, targetMod?: GirModule) {
+        if (!targetMod)
+            targetMod = this
         let type: GirType
         let arr: string = ''
         let arrCType
@@ -428,7 +432,7 @@ export class GirModule {
                 'char*': 'string',
                 'gchar*': 'string',
                 'gchar**': 'any',  // FIXME
-                'GType': (this.name == 'GObject' ? 'Type' : 'GObject.Type') + suffix,
+                'GType': (targetMod.name == 'GObject' ? 'Type' : 'GObject.Type') + suffix,
             }
             if (cTypeMap[cType]) {
                 return cTypeMap[cType]
@@ -460,8 +464,8 @@ export class GirModule {
             return "any" + arr
         }
 
-        if (fullTypeName.indexOf(this.name + ".") == 0) {
-            let ret = fullTypeName.substring(this.name.length + 1)
+        if (targetMod.name && fullTypeName.indexOf(targetMod.name + ".") == 0) {
+            let ret = fullTypeName.substring(targetMod.name.length + 1)
             // console.warn(`Rewriting ${fullTypeName} to ${ret} + ${suffix} -- ${this.name} -- ${e._module}`)
             if (fullTypeName == 'Gio.ApplicationFlags') {
                 debugger;
@@ -481,12 +485,12 @@ export class GirModule {
         return defaultVal
     }
 
-    private getReturnType(e) {
+    private getReturnType(e, targetMod?: GirModule) {
         let returnType
 
         let returnVal = e["return-value"] ? e["return-value"][0] : undefined
         if (returnVal) {
-            returnType = this.typeLookup(returnVal)
+            returnType = this.typeLookup(returnVal, targetMod)
         } else
             returnType = "void"
 
@@ -526,7 +530,8 @@ export class GirModule {
         return parseInt(param.$.destroy)
     }
 
-    private getParameters(parameters, outArrayLengthIndex: number): [ string, string[] ] {
+    private getParameters(parameters, outArrayLengthIndex: number,
+                         targetMod?: GirModule): [ string, string[] ] {
         let def: string[] = []
         let outParams: string[] = []
 
@@ -552,7 +557,7 @@ export class GirModule {
 
                 for (let param of parametersArray as GirVariable[]) {
                     let paramName = this.fixVariableName(param.$.name || '-', false)
-                    let paramType = this.typeLookup(param)
+                    let paramType = this.typeLookup(param, targetMod)
 
                     if (skip.indexOf(param) !== -1) {
                         continue
@@ -665,14 +670,15 @@ export class GirModule {
         return []
     }
 
-    private getFunction(e: GirFunction, prefix: string, funcNamePrefix: string | null = null): [string[], string | null] {
+    private getFunction(e: GirFunction, prefix: string, funcNamePrefix: string | null = null,
+                        targetMod?: GirModule): [string[], string | null] {
         if (!e || !e.$ || !this.girBool(e.$.introspectable, true) || e.$["shadowed-by"])
             return [[], null]
 
         let patch = e._fullSymName ? this.patch[e._fullSymName] : []
         let name = e.$.name
-        let [retType, outArrayLengthIndex] = this.getReturnType(e)
-        let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex)
+        let [retType, outArrayLengthIndex] = this.getReturnType(e, targetMod)
+        let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex, targetMod)
 
         if (e.$["shadows"]) {
             name = e.$["shadows"]
@@ -712,13 +718,14 @@ export class GirModule {
         return [[`${prefix}${name}(${params}): ${retType}`], name]
     }
 
-    private getConstructorFunction(name: string, e: GirFunction, prefix: string, funcNamePrefix: string | null = null): [string[], string | null] {
-        let [desc, funcName] = this.getFunction(e, prefix, funcNamePrefix)
+    private getConstructorFunction(name: string, e: GirFunction, prefix: string, funcNamePrefix: string | null = null,
+                                   targetMod?: GirModule): [string[], string | null] {
+        let [desc, funcName] = this.getFunction(e, prefix, funcNamePrefix, targetMod)
 
         if (!funcName)
             return [[], null]
 
-        let [retType] = this.getReturnType(e)
+        let [retType] = this.getReturnType(e, targetMod)
         if (retType.split(' ')[0] != name) {
             // console.warn(`Constructor returns ${retType} should return ${name}`)
 
@@ -737,7 +744,7 @@ export class GirModule {
                 } as GirVariable
             ]
 
-            desc = this.getFunction(e, prefix)[0]
+            desc = this.getFunction(e, prefix, null, targetMod)[0]
         }
 
         return [desc, funcName]
@@ -903,7 +910,7 @@ export class GirModule {
             if (this.name == "GObject") prefix = ""
             def.push(`    // Properties of ${cls._fullSymName}`)
             for (let p of cls.property) {
-                let [desc, name, origName] = this.getProperty(p)
+                let [desc, name, origName] = this.getProperty(p, false)
                 let [aDesc, added] = this.checkName(desc, name, localNames)
                 def = def.concat(aDesc)
                 if (added && origName) {
@@ -939,8 +946,8 @@ export class GirModule {
                 desc = this.checkName(desc, name, localNames)[0]
                 if (name && desc.length) {
                     def = def.concat(desc)
-                    def = def.concat(this.getOverloads(cls, desc, name, e => {
-                        return (e.method || []).map(f => this.getFunction(f, "    "))
+                    def = def.concat(this.getOverloads(cls, desc, name, (mod, e) => {
+                        return (e.method || []).map(f => mod.getFunction(f, "    ", null, this))
                     }))
                 }
             }
@@ -987,7 +994,7 @@ export class GirModule {
     // than nothing.
     // See issue #12.
     private getOverloads(e: GirClass, desc: string[], funcName: string,
-            getFunctions: (cls: GirClass) => [string[], string | null][]):
+            getFunctions: (mod: GirModule, cls: GirClass) => [string[], string | null][]):
             string[]
     {
         let clash = false
@@ -998,7 +1005,8 @@ export class GirModule {
                 bottom = false
                 return
             }
-            const funcs = getFunctions(cls)
+            let mod = cls._module || this
+            const funcs = getFunctions(mod, cls)
             for (const [desc2, funcName2] of funcs) {
                 if (funcName === funcName2 && desc != desc2) {
                     clash = true
@@ -1010,24 +1018,26 @@ export class GirModule {
     }
 
     private getStaticConstructors(e: GirClass,
-                                filter?: (funcName: string) => boolean):
+                                  filter?: (funcName: string) => boolean,
+                                  targetMod?: GirModule):
             [string[], string | null][]
     {
         let funcs = e['constructor']
         if (!Array.isArray(funcs))
             return [[[], null]]
         let ctors = funcs.map(f =>
-            this.getConstructorFunction(e.$.name, f, "    static "))
+            this.getConstructorFunction(e.$.name, f, "    static ", null, targetMod))
         if (filter)
             ctors = ctors.filter(([desc, funcName]) => funcName && filter(funcName))
         return ctors
     }
 
-    private getOtherStaticFunctions(e: GirClass, stat = true): [string[], string][] {
+    private getOtherStaticFunctions(e: GirClass, stat = true,
+                                    targetMod?: GirModule): [string[], string][] {
         let fns: [string[], string][] = []
         if (e.function) {
             for (let f of e.function) {
-                let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ")
+                let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ", null, targetMod)
                 if (funcName && funcName !== "new")
                     fns.push([desc, funcName])
             }
@@ -1035,8 +1045,8 @@ export class GirModule {
         return fns
     }
 
-    private getStaticNew(e: GirClass): [string[], string | null] {
-        let funcs = this.getStaticConstructors(e, fn => fn === "new")
+    private getStaticNew(e: GirClass, targetMod?: GirModule): [string[], string | null] {
+        let funcs = this.getStaticConstructors(e, fn => fn === "new", targetMod)
         return funcs.length ? funcs[0] : [[], null]
     }
 
@@ -1190,7 +1200,7 @@ export class GirModule {
             if (funcName) {
                 def = def.concat(desc)
                 def = def.concat(this.getOverloads(e, desc, funcName,
-                        cls => [this.getStaticNew(e)]))
+                        (mod, cls) => [mod.getStaticNew(e, this)]))
                 const jsStyleCtor = desc[0]
                     .replace("static new", "constructor")
                     .replace(/:[^:]+$/, "")
@@ -1209,13 +1219,13 @@ export class GirModule {
                 if (!funcName) continue
                 stc = stc.concat(desc)
                 stc = stc.concat(this.getOverloads(e, desc, funcName,
-                    cls => this.getStaticConstructors(cls, fn => fn !== "new")))
+                    (mod, cls) => mod.getStaticConstructors(cls, fn => fn !== "new", this)))
             }
         }
         for (let [desc, funcName] of this.getOtherStaticFunctions(e)) {
             stc = stc.concat(desc)
             stc = stc.concat(this.getOverloads(e, desc, funcName,
-                cls => this.getOtherStaticFunctions(cls)))
+                (mod, cls) => mod.getOtherStaticFunctions(cls, true, this)))
         }
         if (stc.length > 0) {
             def = def.concat(stc)
