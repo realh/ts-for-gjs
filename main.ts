@@ -1252,224 +1252,224 @@ export class GirModule {
         return def
     }
 
-    private exportObjectInternal(e: GirClass | GirClass) {
-        let name = e.$.name
-        let def: string[] = []
-        let isDerivedFromGObject = this.isDerivedFromGObject(e)
-
-        if (e.$ && e.$["glib:is-gtype-struct-for"]) {
-            return []   
-        }
-
-        let checkName = (desc: string[], name, localNames): [string[], boolean] => {
-            if (!desc || desc.length == 0)
-                return [[], false]
-
-            if (!name) {
-                // console.error(`No name for ${desc}`)
-                return [[], false]
-            }
-
-            if (localNames[name]) {
-                // console.warn(`Name ${name} already defined (${desc})`)
-                return [[], false]
-            }
-
-            localNames[name] = 1
-            return [desc, true]
-        }
-
-        let parentName: string|null = null
-        let counter: number = 0
-        this.traverseInheritanceTree(e, (cls) => {
-            if (counter++ != 1)
-                return
-            parentName = cls._fullSymName || null
-        })
-
-        let parentNameShort: string = parentName || ''
-        if (parentNameShort && this.name) {
-            let s = parentNameShort.split(".", 2)
-            if (s[0] === this.name) {
-                parentNameShort = s[1]
-            }
-        }
-
-        // Properties for construction
-        if (isDerivedFromGObject) {
-            let ext: string = ' '
-            if (parentName)
-                ext = `extends ${parentNameShort}_ConstructProps `
-
-            def.push(`export interface ${name}_ConstructProps ${ext}{`)
-            let constructPropNames = {}
-            if (e.property) {
-                for (let p of e.property) {
-                    let [desc, name] = this.getProperty(p, true)
-                    def = def.concat(checkName(desc, name, constructPropNames)[0])
-                }
-            }
-            def.push("}")
-        }
-
-        // Instance side
-        def.push(`export class ${name} {`)
-        
-        let localNames = {}
-        let propertyNames: string[] = []
-
-        const copyProperties = (cls: GirClass) => {
-            if (cls.property) {
-                def.push(`    /* Properties of ${cls._fullSymName} */`)
-                for (let p of cls.property) {
-                    let [desc, name, origName] = this.getProperty(p)
-                    let [aDesc, added] = checkName(desc, name, localNames)
-                    if (added) {
-                        if (origName) propertyNames.push(origName)
-                    }
-                    def = def.concat(aDesc)
-                }
-            }
-        }
-        this.traverseInheritanceTree(e, copyProperties)
-        this.forEachInterface(e, copyProperties)
-
-        // Fields
-        const copyFields = (cls) => {
-            if (cls.field) {
-                def.push(`    /* Fields of ${cls._fullSymName} */`)
-                for (let f of cls.field) {
-                    let [desc, name] = this.getVariable(f, false, false)
-
-                    let [aDesc, added] = checkName(desc, name, localNames)
-                    if (added) {
-                        def.push(`    ${aDesc[0]}`)
-                    }
-                }
-            }
-        }
-        this.traverseInheritanceTree(e, copyFields)
-
-        // Instance methods
-        const copyMethods = (cls: GirClass) => {
-            if (cls.method) {
-                def.push(`    /* Methods of ${cls._fullSymName} */`)
-                for (let f of cls.method) {
-                    let [desc, name] = this.getFunction(f, "    ")
-                    def = def.concat(checkName(desc, name, localNames)[0])
-                }
-            }
-        }
-        this.traverseInheritanceTree(e, copyMethods)
-        this.forEachInterface(e, copyMethods)
-
-        // Instance methods, vfunc_ prefix
-        this.traverseInheritanceTree(e, (cls) => {
-            let vmeth = cls["virtual-method"]
-            if (vmeth) {
-                def.push(`    /* Virtual methods of ${cls._fullSymName} */`)
-                for (let f of vmeth) {
-                    let [desc, name] = this.getFunction(f, "    ", "vfunc_")
-
-                    desc = checkName(desc, name, localNames)[0]
-
-                    if (desc[0]) {
-                        desc[0] = desc[0].replace("(", "?(")
-                    }
-
-                    def = def.concat(desc)
-                }
-            }
-        })
-
-        const copySignals = (cls) => {
-            let signals = cls["glib:signal"]
-            if (signals) {
-                def.push(`    /* Signals of ${cls._fullSymName} */`)
-                for (let s of signals)
-                    def = def.concat(this.getSignalFunc(s, name))
-            }
-        }
-        this.traverseInheritanceTree(e, copySignals)
-        this.forEachInterface(e, copySignals)
-
-        if (isDerivedFromGObject) {
-            let prefix = "GObject."
-            if (this.name == "GObject") prefix = ""
-            for (let p of propertyNames) {
-                def.push(`    connect(sigName: "notify::${p}", callback: ((obj: ${name}, pspec: ${prefix}ParamSpec) => void)): number`)
-                def.push(`    connect_after(sigName: "notify::${p}", callback: ((obj: ${name}, pspec: ${prefix}ParamSpec) => void)): number`)
-            }
-            def.push(`    connect(sigName: string, callback: any): number`)
-            def.push(`    connect_after(sigName: string, callback: any): number`)
-            def.push(`    emit(sigName: string, ...args: any[]): void`)
-            def.push(`    disconnect(id: number): void`)
-        }
-
-        // TODO: Records have fields
-
-        // Static side: default constructor
-        def.push(`    static name: string`)
-        if (isDerivedFromGObject) {
-            def.push(`    constructor (config?: ${name}_ConstructProps)`)
-            def.push(`    _init (config?: ${name}_ConstructProps): void`)
-        } else {
-            let constructor_: GirFunction[] = (e['constructor'] || []) as GirFunction[]
-            if (constructor_) {
-                for (let f of constructor_) {                    
-                    let [desc, funcName] = this.getConstructorFunction(name, f, "    static ")
-                    if (!funcName)
-                        continue
-                    if (funcName != "new")
-                        continue
-
-                    def = def.concat(desc)
-
-                    const jsStyleCtor = desc[0]
-                        .replace("static new", "constructor")
-                        .replace(/:[^:]+$/, "")
-
-                    def = def.concat(jsStyleCtor)
-                }
-            }
-        }
-
-        // Static methods
-        if (true) {
-            let stc: string[] = []
-            
-            let constructor_: GirFunction[] = (e['constructor'] || []) as GirFunction[]
-            if (constructor_) {
-                for (let f of constructor_) {
-                    let [desc, funcName] = this.getConstructorFunction(name, f, "    static ")
-                    if (!funcName)
-                        continue
-                    
-                    stc = stc.concat(desc)
-                }
-            }
-
-            if (e.function)
-                for (let f of e.function) {
-                    let [desc, funcName] = this.getFunction(f, "    static ")
-                    if (funcName === "new")
-                        continue
-
-                    stc = stc.concat(desc)
-                }
-
-            if (stc.length > 0) {
-                def = def.concat(stc)
-            }
-        }
-
-        if (isDerivedFromGObject)
-            def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
-
-        def.push("}")
-
-        return def
-    }
+//    private exportObjectInternal(e: GirClass | GirClass) {
+//        let name = e.$.name
+//        let def: string[] = []
+//        let isDerivedFromGObject = this.isDerivedFromGObject(e)
+//
+//        if (e.$ && e.$["glib:is-gtype-struct-for"]) {
+//            return []   
+//        }
+//
+//        let checkName = (desc: string[], name, localNames): [string[], boolean] => {
+//            if (!desc || desc.length == 0)
+//                return [[], false]
+//
+//            if (!name) {
+//                // console.error(`No name for ${desc}`)
+//                return [[], false]
+//            }
+//
+//            if (localNames[name]) {
+//                // console.warn(`Name ${name} already defined (${desc})`)
+//                return [[], false]
+//            }
+//
+//            localNames[name] = 1
+//            return [desc, true]
+//        }
+//
+//        let parentName: string|null = null
+//        let counter: number = 0
+//        this.traverseInheritanceTree(e, (cls) => {
+//            if (counter++ != 1)
+//                return
+//            parentName = cls._fullSymName || null
+//        })
+//
+//        let parentNameShort: string = parentName || ''
+//        if (parentNameShort && this.name) {
+//            let s = parentNameShort.split(".", 2)
+//            if (s[0] === this.name) {
+//                parentNameShort = s[1]
+//            }
+//        }
+//
+//        // Properties for construction
+//        if (isDerivedFromGObject) {
+//            let ext: string = ' '
+//            if (parentName)
+//                ext = `extends ${parentNameShort}_ConstructProps `
+//
+//            def.push(`export interface ${name}_ConstructProps ${ext}{`)
+//            let constructPropNames = {}
+//            if (e.property) {
+//                for (let p of e.property) {
+//                    let [desc, name] = this.getProperty(p, true)
+//                    def = def.concat(checkName(desc, name, constructPropNames)[0])
+//                }
+//            }
+//            def.push("}")
+//        }
+//
+//        // Instance side
+//        def.push(`export class ${name} {`)
+//        
+//        let localNames = {}
+//        let propertyNames: string[] = []
+//
+//        const copyProperties = (cls: GirClass) => {
+//            if (cls.property) {
+//                def.push(`    /* Properties of ${cls._fullSymName} */`)
+//                for (let p of cls.property) {
+//                    let [desc, name, origName] = this.getProperty(p)
+//                    let [aDesc, added] = checkName(desc, name, localNames)
+//                    if (added) {
+//                        if (origName) propertyNames.push(origName)
+//                    }
+//                    def = def.concat(aDesc)
+//                }
+//            }
+//        }
+//        this.traverseInheritanceTree(e, copyProperties)
+//        this.forEachInterface(e, copyProperties)
+//
+//        // Fields
+//        const copyFields = (cls) => {
+//            if (cls.field) {
+//                def.push(`    /* Fields of ${cls._fullSymName} */`)
+//                for (let f of cls.field) {
+//                    let [desc, name] = this.getVariable(f, false, false)
+//
+//                    let [aDesc, added] = checkName(desc, name, localNames)
+//                    if (added) {
+//                        def.push(`    ${aDesc[0]}`)
+//                    }
+//                }
+//            }
+//        }
+//        this.traverseInheritanceTree(e, copyFields)
+//
+//        // Instance methods
+//        const copyMethods = (cls: GirClass) => {
+//            if (cls.method) {
+//                def.push(`    /* Methods of ${cls._fullSymName} */`)
+//                for (let f of cls.method) {
+//                    let [desc, name] = this.getFunction(f, "    ")
+//                    def = def.concat(checkName(desc, name, localNames)[0])
+//                }
+//            }
+//        }
+//        this.traverseInheritanceTree(e, copyMethods)
+//        this.forEachInterface(e, copyMethods)
+//
+//        // Instance methods, vfunc_ prefix
+//        this.traverseInheritanceTree(e, (cls) => {
+//            let vmeth = cls["virtual-method"]
+//            if (vmeth) {
+//                def.push(`    /* Virtual methods of ${cls._fullSymName} */`)
+//                for (let f of vmeth) {
+//                    let [desc, name] = this.getFunction(f, "    ", "vfunc_")
+//
+//                    desc = checkName(desc, name, localNames)[0]
+//
+//                    if (desc[0]) {
+//                        desc[0] = desc[0].replace("(", "?(")
+//                    }
+//
+//                    def = def.concat(desc)
+//                }
+//            }
+//        })
+//
+//        const copySignals = (cls) => {
+//            let signals = cls["glib:signal"]
+//            if (signals) {
+//                def.push(`    /* Signals of ${cls._fullSymName} */`)
+//                for (let s of signals)
+//                    def = def.concat(this.getSignalFunc(s, name))
+//            }
+//        }
+//        this.traverseInheritanceTree(e, copySignals)
+//        this.forEachInterface(e, copySignals)
+//
+//        if (isDerivedFromGObject) {
+//            let prefix = "GObject."
+//            if (this.name == "GObject") prefix = ""
+//            for (let p of propertyNames) {
+//                def.push(`    connect(sigName: "notify::${p}", callback: ((obj: ${name}, pspec: ${prefix}ParamSpec) => void)): number`)
+//                def.push(`    connect_after(sigName: "notify::${p}", callback: ((obj: ${name}, pspec: ${prefix}ParamSpec) => void)): number`)
+//            }
+//            def.push(`    connect(sigName: string, callback: any): number`)
+//            def.push(`    connect_after(sigName: string, callback: any): number`)
+//            def.push(`    emit(sigName: string, ...args: any[]): void`)
+//            def.push(`    disconnect(id: number): void`)
+//        }
+//
+//        // TODO: Records have fields
+//
+//        // Static side: default constructor
+//        def.push(`    static name: string`)
+//        if (isDerivedFromGObject) {
+//            def.push(`    constructor (config?: ${name}_ConstructProps)`)
+//            def.push(`    _init (config?: ${name}_ConstructProps): void`)
+//        } else {
+//            let constructor_: GirFunction[] = (e['constructor'] || []) as GirFunction[]
+//            if (constructor_) {
+//                for (let f of constructor_) {                    
+//                    let [desc, funcName] = this.getConstructorFunction(name, f, "    static ")
+//                    if (!funcName)
+//                        continue
+//                    if (funcName != "new")
+//                        continue
+//
+//                    def = def.concat(desc)
+//
+//                    const jsStyleCtor = desc[0]
+//                        .replace("static new", "constructor")
+//                        .replace(/:[^:]+$/, "")
+//
+//                    def = def.concat(jsStyleCtor)
+//                }
+//            }
+//        }
+//
+//        // Static methods
+//        if (true) {
+//            let stc: string[] = []
+//            
+//            let constructor_: GirFunction[] = (e['constructor'] || []) as GirFunction[]
+//            if (constructor_) {
+//                for (let f of constructor_) {
+//                    let [desc, funcName] = this.getConstructorFunction(name, f, "    static ")
+//                    if (!funcName)
+//                        continue
+//                    
+//                    stc = stc.concat(desc)
+//                }
+//            }
+//
+//            if (e.function)
+//                for (let f of e.function) {
+//                    let [desc, funcName] = this.getFunction(f, "    static ")
+//                    if (funcName === "new")
+//                        continue
+//
+//                    stc = stc.concat(desc)
+//                }
+//
+//            if (stc.length > 0) {
+//                def = def.concat(stc)
+//            }
+//        }
+//
+//        if (isDerivedFromGObject)
+//            def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
+//
+//        def.push("}")
+//
+//        return def
+//    }
 
     exportAlias(e: GirAlias) {
         if (!e || !e.$ || !this.girBool(e.$.introspectable, true))
