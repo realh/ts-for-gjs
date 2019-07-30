@@ -947,7 +947,16 @@ export class GirModule {
                 if (name && desc.length) {
                     def = def.concat(desc)
                     let overloads = this.getOverloads(cls, desc, name, (mod, e) => {
-                        return (e.method || []).map(f => mod.getFunction(f, "    ", null, this))
+                        let methods = (e.method || []).map(f => mod.getFunction(f, "    ", null, this))
+                        // GObject.Object signal methods aren't introspected, but "connect" at least can clash
+                        if (e._fullSymName === "GObject.Object") {
+                            methods = methods.concat([
+                                [["    connect(sigName: string, callback: ${callback}): number"], "connect"],
+                                [["    connect_after(sigName: string, callback: ${callback}): number"], "connect_after"],
+                                [["    emit(sigName: string, ...args: any[]): void"], "emit"]
+                            ])
+                        }
+                        return methods
                     })
                     def = def.concat(overloads)
                     if (overloads.length) {
