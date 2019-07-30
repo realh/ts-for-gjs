@@ -3,6 +3,12 @@ import * as lodash from 'lodash'
 import * as commander from 'commander'
 import fs = require('fs')
 
+let doLog = false
+function deblog(msg: string) {
+    if (doLog)
+        console.log('|' + msg)
+}
+
 interface TsForGjsExtended {
     _module?: GirModule
     _fullSymName?: string
@@ -831,18 +837,25 @@ export class GirModule {
         const mod: GirModule = e._module ? e._module : this
         if (e._fullSymName)
             dups[e._fullSymName] = true
+        deblog(`>>>> forEachInterface(${e._fullSymName})`)
         for (const { $ } of e.implements || []) {
             let name = $.name as string
             if (name.indexOf(".") < 0) {
                 name = mod.name + "." + name
             }
+            deblog(`    ${e._fullSymName} implements ${name}`)
+            if (dups.hasOwnProperty(name))
+                deblog(`        ${name} already processed`)
             if (dups.hasOwnProperty(name)) continue
             dups[name] = true
             const iface: GirClass | undefined = this.symTable[name]
             if (iface) {
+                deblog(`        Calling callback for ${name}`)
                 callback(iface)
+                deblog(`        Recursing for ${name}`)
                 this.forEachInterface(iface, callback, recurseObjects, dups)
             }
+            deblog(`    <<<< implemented ${name}`)
         }
         if (e.prerequisite) {
             let parentName = e.prerequisite[0].$.name
@@ -851,15 +864,22 @@ export class GirModule {
             if (parentName.indexOf(".") < 0) {
                 parentName = mod.name + "." + parentName
             }
+            deblog(`    ${e._fullSymName} has prerequisite ${parentName}`)
+            if (dups.hasOwnProperty(parentName))
+                deblog(`        ${parentName} already processed`)
             if (dups.hasOwnProperty(parentName)) return
             let parentPtr = this.symTable[parentName]
             if (parentPtr && (parentPtr.prerequisite || recurseObjects)) {
                 // iface's prerequsite is also an interface, or it's
                 // a class and we also want to recurse classes
+                deblog(`        Calling callback for ${parentName}`)
                 callback(parentPtr)
+                deblog(`        Recursing for ${parentName}`)
                 this.forEachInterface(parentPtr, callback, recurseObjects, dups)
             }
+            deblog(`    <<<< prereq ${parentName}`)
         }
+        deblog(`<<<< forEachInterface(${e._fullSymName})`)
     }
 
     private forEachSuperAndInterface(e: GirClass,
@@ -943,29 +963,40 @@ export class GirModule {
             def.push(`    // Non-virtual instance methods of ${cls._fullSymName}`)
             for (let f of cls.method) {
                 let [desc, name] = this.getFunction(f, "    ")
+                doLog = cls._fullSymName == "Gio.Socket" &&
+                    (name == "condition_wait" || name == "connect")
                 desc = this.checkName(desc, name, localNames)[0]
                 if (name && desc.length) {
                     def = def.concat(desc)
+                    deblog(`Checking ${cls._fullSymName}'s hierarchy for overloads of ${desc[0]}`)
                     let overloads = this.getOverloads(cls, desc, name, (mod, e) => {
                         return (e.method || []).map(f => mod.getFunction(f, "    ", null, this))
                     })
-                    if (overloads.length) {
-                        console.warn(`${cls._fullSymName}.${f.$.name} overloads a superclass method`)
-                    }
                     def = def.concat(overloads)
+                    if (overloads.length) {
+                        //console.warn(`${cls._fullSymName}.${f.$.name} overloads a superclass method`)
+                        continue
+                    }
+                    deblog(`Checking ${cls._fullSymName}'s interfaces for overloads of ${desc[0]}`)
                     overloads = this.getOverloads(cls, desc, name, (mod, e) => {
+                        deblog(`    >>>> Getting methods for all of ${cls._fullSymName}'s interfaces`)
                         let methods: [string[], string | null][] = []
                         this.forEachInterface(e, sup => {
-                            for (const meth of (e.method || [])) {
+                            deblog(`        >>>> Getting methods of ${sup._fullSymName} implemented by ${e._fullSymName}`)
+                            for (const meth of (sup.method || [])) {
                                 methods.push(mod.getFunction(meth, "    ", null, this))
+                                deblog(`            ${mod.getFunction(meth, "    ", null, this)}`)
                             }
+                            deblog(`        <<<< methods of ${sup._fullSymName} implemented by ${e._fullSymName}`)
                         })
+                        deblog(`    <<<< methods for all of ${cls._fullSymName}'s interfaces`)
                         return methods
-                    })
+                    }, false)
                     if (overloads.length) {
                         // This makes the method unsafe to use, we can't reliably
                         // know which interface is implemented
-                        console.warn(`${cls._fullSymName}.${f.$.name} incorrectly overloads a method from another interface`)
+                        //console.warn(
+                        //    `${cls._fullSymName}.${f.$.name} incorrectly overloads a method from another interface`)
                     }
                     def = def.concat(overloads)
                 }
@@ -1013,28 +1044,35 @@ export class GirModule {
     // than nothing.
     // See issue #12.
     private getOverloads(e: GirClass, desc: string[], funcName: string,
-            getFunctions: (mod: GirModule, cls: GirClass) => [string[], string | null][]):
+            getFunctions: (mod: GirModule, cls: GirClass) => [string[], string | null][],
+            skipBottom = true):
             string[]
     {
         let clash = false
-        let bottom = true
         this.traverseInheritanceTree(e, (cls: GirClass) => {
             if (clash) return;
-            if (bottom) {
-                bottom = false
+            if (skipBottom) {
+                skipBottom = false
                 return
             }
             let mod = cls._module || this
+            deblog(`    >>>> getFunctions(${e._fullSymName})`)
             const funcs = getFunctions(mod, cls)
+            deblog(`    <<<< getFunctions(${e._fullSymName})`)
             for (const [desc2, funcName2] of funcs) {
                 if (funcName === funcName2 && desc !== desc2) {
+                    deblog(`        ${funcName2} in ${cls._fullSymName} clashes`)
                     clash = true
                     break
                 }
+                deblog(`        ${funcName2} in ${cls._fullSymName} doesn't clash`)
             }
         });
         const stat = (clash && desc.indexOf("    static") == 0) ? "static " : ""
-        return clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
+        //return clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
+        const gen = clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
+        deblog(`    Adding generic overload ${gen}`)
+        return gen
     }
 
     private getStaticConstructors(e: GirClass,
