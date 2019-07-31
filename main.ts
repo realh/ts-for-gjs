@@ -1,3 +1,8 @@
+// TODO:
+// * Avoid redundant overloads by ignoring param names
+// * vfuncs need overloads too
+// * Reuse same function for overloading instance, virtual and static methods
+
 import * as xml2js from 'xml2js'
 import * as lodash from 'lodash'
 import * as commander from 'commander'
