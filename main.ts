@@ -1254,7 +1254,8 @@ export class GirModule {
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
             def = def.concat(this.processProperties(cls, localNames))
         })
-        def = def.concat(this.processFields(e, localNames))
+        // Can't export fields for GObjects because names would clash
+        //def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, true))
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
             def = def.concat(this.processVirtualMethods(cls, localNames))
