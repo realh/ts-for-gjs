@@ -1055,13 +1055,18 @@ export class GirModule {
         return def
     }
 
-    private processSignals(cls: GirClass): string[] {
+    // If these definitions are for a class (as opposed to an interface)
+    // we also need to redeclare the generic signal functions
+    private processSignals(cls: GirClass, forClass: boolean): string[] {
         let def: string[] = []
         let signals = cls["glib:signal"]
-        if (signals) {
+        if (signals && signals.length) {
             def.push(`    // Signals of ${cls._fullSymName}`)
             for (let s of signals)
                 def = def.concat(this.getSignalFunc(s, cls.$.name))
+            if (forClass && cls._fullSymName !== "GObject.Object") {
+                def = def.concat(this.getSignalFunc(cls.$.name))
+            }
         }
         return def
     }
@@ -1211,7 +1216,7 @@ export class GirModule {
         def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, false))
         def = def.concat(this.processVirtualMethods(e, localNames))
-        def = def.concat(this.processSignals(e))
+        def = def.concat(this.processSignals(e, false))
 
         def.push('}')
 
@@ -1269,7 +1274,7 @@ export class GirModule {
             def = def.concat(this.processVirtualMethods(cls, localNames))
         })
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
-            def = def.concat(this.processSignals(cls))
+            def = def.concat(this.processSignals(cls, true))
         })
 
         // JS constructor(s)
