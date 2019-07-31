@@ -953,14 +953,6 @@ export class GirModule {
                 [["    connect_after(sigName: string, callback: Function): number"], "connect_after"],
                 [["    emit(sigName: string, ...args: any[]): void"], "emit"])
         }
-        /*
-        if (doLog) {
-            debLog(`**** Methods of ${cls._fullSymName}:`)
-            for (const m of methods) {
-                debLog(m)
-            }
-        }
-        */
         return methods
     }
 
@@ -992,7 +984,7 @@ export class GirModule {
             for (const defn of ownRec) {
                 if (defn === fn[0][0]) return
             }
-            //console.warn(`Method ${name} in ${ownName} clashes with one inherited from ${otherName}`)
+            console.warn(`Method ${name} in ${ownName} clashes with one inherited from ${otherName}`)
             ownRec.unshift(...fn[0])
             if (ownRec.length === 2)
                 ownRec.push(`    ${name}<T, V>(arg?: T): V`)
@@ -1004,10 +996,8 @@ export class GirModule {
         const ownMethodsArr = this.getInstanceMethods(cls)
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
-        doLog = cls._fullSymName === "Vte.Terminal"
         for (const m of ownMethodsArr) {
             if (m[1]) {
-                debLog(`method "${m[1]}: ${m[0][0]}"`)
                 ownMethodsMap.set(m[1], m[0])
                 allMethodsMap.set(m[1], m[0])
             }
@@ -1031,10 +1021,8 @@ export class GirModule {
         // Export the methods
         let def: string[] = ["    // Instance methods"]
         for (const m of Array.from(ownMethodsMap.values())) {
-            debLog(m)
             def = def.concat(m)
         }
-        doLog = false
         return def
     }
 
