@@ -994,8 +994,8 @@ export class GirModule {
         const allMethodsMap = new Map<string, string[]>()
         for (const m of ownMethodsArr) {
             if (m[1]) {
-                ownMethodsMap[m[1]] = m[0]
-                allMethodsMap[m[1]] = m[0]
+                ownMethodsMap.set(m[1], m[0])
+                allMethodsMap.set(m[1], m[0])
             }
         }
         // Check for clashes in superclasses
@@ -1016,7 +1016,7 @@ export class GirModule {
         }, !forClass)
         // Export the methods
         let def: string[] = ["    // Instance methods"]
-        for (const m of ownMethodsMap.values()) {
+        for (const m in ownMethodsMap.values()) {
             def = def.concat(m)
         }
         return def
