@@ -1201,7 +1201,8 @@ export class GirModule {
         const localNames = {}
 
         def = def.concat(this.processProperties(e, localNames))
-        def = def.concat(this.processFields(e, localNames))
+        // See similar commented line in exportClassInternal
+        //def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, false))
         def = def.concat(this.processVirtualMethods(e, localNames))
         def = def.concat(this.processSignals(e, false))
