@@ -948,8 +948,7 @@ export class GirModule {
     }
 
     private getInstanceMethods(cls: GirClass): [string[], string | null][] {
-        const mod = cls._module || this
-        let methods = (cls.method || []).map(f => mod.getFunction(f, "    ", null, this))
+        let methods = (cls.method || []).map(f => this.getFunction(f, "    ", null, this))
         // GObject.Object signal methods aren't introspected
         if (cls._fullSymName === "GObject.Object") {
             methods.push(
