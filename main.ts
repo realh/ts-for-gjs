@@ -767,6 +767,8 @@ export class GirModule {
     // 4. Implementation
     private getSignalFunc(signal: string | GirFunction, clsName?: string,
                           params?: string, retType?: string) {
+        let gen = ""
+        const genDef = "<T extends string, V extends Function>"
         if (typeof signal != "string") {
             let outArrayLengthIndex = 0;
             let outParams: string[] = [];
@@ -775,8 +777,9 @@ export class GirModule {
                                                      outArrayLengthIndex);
             signal = `"${signal.$.name}"`;
         } else if (!clsName) {
+            gen = genDef
             clsName = signal
-            signal = "string"
+            signal = "T"
         } else {
             signal = `"${signal}"`
         }
@@ -787,13 +790,14 @@ export class GirModule {
             callback = `(obj: ${clsName}${paramComma}${params}) => ${retType}`
             emit = `${paramComma}${params}`
         } else {
-            callback = "Function"
+            gen = genDef
+            callback = "V"
             emit = ", ...args: any[]"
         }
         return [
-            `    connect(sigName: ${signal}, callback: ${callback}): number`,
-            `    connect_after(sigName: ${signal}, callback: ${callback}): number`,
-            `    emit(sigName: ${signal}${emit}): void`
+            `    connect${gen}(sigName: ${signal}, callback: ${callback}): number`,
+            `    connect_after${gen}(sigName: ${signal}, callback: ${callback}): number`,
+            `    emit${gen}(sigName: ${signal}${emit}): void`
         ]
     }
 
@@ -1043,16 +1047,16 @@ export class GirModule {
         return def
     }
 
-    // If these definitions are for a class (as opposed to an interface)
-    // we also need to redeclare the generic signal functions
-    private processSignals(cls: GirClass, forClass: boolean): string[] {
+    private processSignals(cls: GirClass): string[] {
         let def: string[] = []
         let signals = cls["glib:signal"]
         if (signals && signals.length) {
             def.push(`    // Signals of ${cls._fullSymName}`)
             for (let s of signals)
                 def = def.concat(this.getSignalFunc(s, cls.$.name))
-            if (forClass && cls._fullSymName !== "GObject.Object") {
+            // If this class/interface has signals we need to redeclare
+            // the generic signal functions
+            if (cls._fullSymName !== "GObject.Object") {
                 def = def.concat(this.getSignalFunc(cls.$.name))
             }
         }
@@ -1205,7 +1209,8 @@ export class GirModule {
         //def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, false))
         def = def.concat(this.processVirtualMethods(e, localNames))
-        def = def.concat(this.processSignals(e, false))
+        // Overloading signal functions doesn't seem to work in interfaces
+        //def = def.concat(this.processSignals(e))
 
         def.push('}')
 
@@ -1262,7 +1267,7 @@ export class GirModule {
             def = def.concat(this.processVirtualMethods(cls, localNames))
         })
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
-            def = def.concat(this.processSignals(cls, true))
+            def = def.concat(this.processSignals(cls))
         })
 
         // JS constructor(s)
