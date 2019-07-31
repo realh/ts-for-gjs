@@ -1456,7 +1456,11 @@ export namespace gettext {
     export function dcgettext(domainname: string|null, msgid: string, category: number): string
     export function ngettext(msgid: string, msgid_plural: string, n: number): string
     export function dngettext(domainname: string, msgid: string, msgid_plural: string, n: number): string
-    export function domain(domainName: string): { gettext: ((msgid: string) => string), ngettext: ((msgid: string, msgid_plural: string, n:number) => string), pgettext: ((context: any, msgid: string) => any) }
+    export function domain(domainName: string): {
+        gettext: ((msgid: string) => string),
+        ngettext: ((msgid: string, msgid_plural: string, n:number) => string),
+        pgettext: ((context: any, msgid: string) => any)
+    }
 }
 export namespace Format {
     export function vprintf(str: string, args: string[]): string
