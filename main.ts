@@ -178,6 +178,8 @@ interface GirRepository {
     namespace?: GirNamespace[]
 }
 
+type FunctionDescription = [string[], string | null]
+
 export class GirModule {
     name: string | null = null
     version: string = "0.0"
@@ -622,7 +624,7 @@ export class GirModule {
     }
 
     private getVariable(v: GirVariable, optional: boolean = false, 
-                        allowQuotes: boolean = false): [string[], string|null] {
+                        allowQuotes: boolean = false): FunctionDescription {
         if (!v.$.name)
             return [[], null]
         if (!v || !v.$ || !this.girBool(v.$.introspectable, true) ||
@@ -681,7 +683,7 @@ export class GirModule {
     }
 
     private getFunction(e: GirFunction, prefix: string, funcNamePrefix: string | null = null,
-                        targetMod?: GirModule): [string[], string | null] {
+                        targetMod?: GirModule): FunctionDescription {
         if (!e || !e.$ || !this.girBool(e.$.introspectable, true) || e.$["shadowed-by"])
             return [[], null]
 
@@ -730,7 +732,7 @@ export class GirModule {
 
     private getConstructorFunction(name: string, e: GirFunction, prefix: string,
                                    funcNamePrefix: string | null = null,
-                                   targetMod?: GirModule): [string[], string | null] {
+                                   targetMod?: GirModule): FunctionDescription {
         let [desc, funcName] = this.getFunction(e, prefix, funcNamePrefix, targetMod)
 
         if (!funcName)
@@ -952,7 +954,7 @@ export class GirModule {
         return def
     }
 
-    private getInstanceMethods(cls: GirClass): [string[], string | null][] {
+    private getInstanceMethods(cls: GirClass): FunctionDescription[] {
         let methods = (cls.method || []).map(f => this.getFunction(f, "    ", null, this))
         // GObject.Object signal methods aren't introspected
         if (cls._fullSymName === "GObject.Object") {
@@ -970,7 +972,7 @@ export class GirModule {
     // If add is false this just adds overloads where necessary
     private checkOverload(ownMethodsMap: Map<string, string[]>,
                           allMethodsMap: Map<string, string[]>,
-                          fn: [string[], string | null], add: boolean,
+                          fn: FunctionDescription, add: boolean,
                           ownName: string, otherName: string) {
         const name = fn[1]
         if (!name) return
@@ -1067,6 +1069,10 @@ export class GirModule {
         return def
     }
 
+    private functionsClash(f1: FunctionDescription) {
+
+    }
+
     // If a method has the same name as one in a superclass, but with
     // incompatible parameters or return types, we need to provide a generic
     // form. For some reason a signature of <T, V>(arg?: T): V covers all cases.
@@ -1076,7 +1082,7 @@ export class GirModule {
     // than nothing.
     // See issue #12.
     private getOverloads(e: GirClass, desc: string[], funcName: string,
-            getFunctions: (mod: GirModule, cls: GirClass) => [string[], string | null][],
+            getFunctions: (mod: GirModule, cls: GirClass) => FunctionDescription[],
             skipBottom = true):
             string[]
     {
@@ -1102,8 +1108,7 @@ export class GirModule {
 
     private getStaticConstructors(e: GirClass,
                                   filter?: (funcName: string) => boolean,
-                                  targetMod?: GirModule):
-            [string[], string | null][]
+                                  targetMod?: GirModule): FunctionDescription[]
     {
         let funcs = e['constructor']
         if (!Array.isArray(funcs))
@@ -1116,8 +1121,8 @@ export class GirModule {
     }
 
     private getOtherStaticFunctions(e: GirClass, stat = true,
-                                    targetMod?: GirModule): [string[], string][] {
-        let fns: [string[], string][] = []
+                                    targetMod?: GirModule): FunctionDescription[] {
+        let fns: FunctionDescription[] = []
         if (e.function) {
             for (let f of e.function) {
                 let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ", null, targetMod)
@@ -1128,7 +1133,7 @@ export class GirModule {
         return fns
     }
 
-    private getStaticNew(e: GirClass, targetMod?: GirModule): [string[], string | null] {
+    private getStaticNew(e: GirClass, targetMod?: GirModule): FunctionDescription {
         let funcs = this.getStaticConstructors(e, fn => fn === "new", targetMod)
         return funcs.length ? funcs[0] : [[], null]
     }
@@ -1308,8 +1313,10 @@ export class GirModule {
         }
         for (let [desc, funcName] of this.getOtherStaticFunctions(e)) {
             stc = stc.concat(desc)
-            stc = stc.concat(this.getOverloads(e, desc, funcName,
-                (mod, cls) => mod.getOtherStaticFunctions(cls, true, this)))
+            if (funcName) {
+                stc = stc.concat(this.getOverloads(e, desc, funcName,
+                    (mod, cls) => mod.getOtherStaticFunctions(cls, true, this)))
+            }
         }
         if (stc.length > 0) {
             def = def.concat(stc)
