@@ -1,5 +1,4 @@
 // TODO:
-// * Avoid redundant overloads by ignoring param names
 // * vfuncs need overloads too
 // * Reuse same function for overloading instance, virtual and static methods
 
@@ -1001,7 +1000,6 @@ export class GirModule {
                           ownName: string, otherName: string) {
         const name = fn[1]
         if (!name) return
-        doLog = true
         let ownRec = ownMethodsMap.get(name)
         let anyRec = allMethodsMap.get(name)
         if (!ownRec) {
@@ -1026,7 +1024,6 @@ export class GirModule {
             if (ownRec.length === 2)
                 ownRec.push(`    ${name}<T, V>(arg?: T): V`)
         }
-        doLog = false
         return
     }
 
