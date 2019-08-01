@@ -966,6 +966,32 @@ export class GirModule {
         return methods
     }
 
+    private stripParamNames(lines: string[]) {
+        let f = lines.join(' ')
+        const g = f
+        f = f.replace(this.commentRegExp, "")
+        let lb = f.split('(', 2)
+        if (lb.length != 2) {
+            console.warn(`'${g}' became '${f}' then ${lb}`)
+        }
+        let rb = lb[1].split(')')
+        let tail = rb[rb.length - 1]
+        let params = rb.slice(0, rb.length - 1).join(')')
+        params = params.replace(this.paramRegExp, ':')
+        params = params.replace(this.optParamRegExp, '?:')
+        return `${lb[0]}(${params})${tail}`
+    }
+
+    private functionsClash(f1: FunctionDescription, f2: FunctionDescription) {
+        if (f1[1] != f2[1] || !f1) {
+            return false
+        }
+        const d1 = this.stripParamNames(f1[0])
+        const d2 = this.stripParamNames(f2[0])
+        debLog(`Clash between ${d1} and ${d2}: ${d1 !== d2}`)
+        return d1 !== d2
+    }
+
     // If add is true this adds fn to ownMethodsMap if it isn't already
     // present; this allows exported classes to satisfy their implemented
     // interfaces.
@@ -976,6 +1002,7 @@ export class GirModule {
                           ownName: string, otherName: string) {
         const name = fn[1]
         if (!name) return
+        doLog = name === "set_hadjustment"
         let ownRec = ownMethodsMap.get(name)
         let anyRec = allMethodsMap.get(name)
         if (!ownRec) {
@@ -992,7 +1019,8 @@ export class GirModule {
         }
         if (ownRec) {
             for (const defn of ownRec) {
-                if (defn === fn[0][0]) return
+                if (!this.functionsClash(fn, [[defn], name]))
+                    return
             }
             console.warn(`Method ${name} in ${ownName} clashes with one inherited from ${otherName}`)
             ownRec.unshift(...fn[0])
@@ -1069,9 +1097,9 @@ export class GirModule {
         return def
     }
 
-    private functionsClash(f1: FunctionDescription) {
-
-    }
+    private commentRegExp = /\/\*.*\*\//g
+    private paramRegExp = /[0-9a-zA-Z_]*:/g
+    private optParamRegExp = /[0-9a-zA-Z_]*\?:/g
 
     // If a method has the same name as one in a superclass, but with
     // incompatible parameters or return types, we need to provide a generic
@@ -1095,12 +1123,13 @@ export class GirModule {
             }
             let mod = cls._module || this
             const funcs = getFunctions(mod, cls)
-            for (const [desc2, funcName2] of funcs) {
-                if (funcName === funcName2 && desc !== desc2) {
+            for (const desc2 of funcs) {
+                if (this.functionsClash([desc, funcName], desc2)) {
                     clash = true
                     break
                 }
             }
+            doLog = false
         });
         const stat = (clash && desc.indexOf("    static") == 0) ? "static " : ""
         return clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
