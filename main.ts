@@ -966,29 +966,28 @@ export class GirModule {
         return methods
     }
 
-    private stripParamNames(lines: string[]) {
+    private stripParamNames(lines: string[], ignoreTail = false) {
         let f = lines.join(' ')
         const g = f
         f = f.replace(this.commentRegExp, "")
         let lb = f.split('(', 2)
-        if (lb.length != 2) {
-            console.warn(`'${g}' became '${f}' then ${lb}`)
-        }
         let rb = lb[1].split(')')
-        let tail = rb[rb.length - 1]
+        let tail = ignoreTail ? "" :  rb[rb.length - 1]
         let params = rb.slice(0, rb.length - 1).join(')')
         params = params.replace(this.paramRegExp, ':')
         params = params.replace(this.optParamRegExp, '?:')
         return `${lb[0]}(${params})${tail}`
     }
 
-    private functionsClash(f1: FunctionDescription, f2: FunctionDescription) {
+    private functionsClash(f1: FunctionDescription, f2: FunctionDescription,
+            ignoreTail = false) {
         if (f1[1] != f2[1] || !f1) {
             return false
         }
-        const d1 = this.stripParamNames(f1[0])
-        const d2 = this.stripParamNames(f2[0])
-        debLog(`Clash between ${d1} and ${d2}: ${d1 !== d2}`)
+        const d1 = this.stripParamNames(f1[0], ignoreTail)
+        const d2 = this.stripParamNames(f2[0], ignoreTail)
+        if (d1 !== d2)
+            debLog(`Clash between ${d1} and ${d2}`)
         return d1 !== d2
     }
 
@@ -1002,7 +1001,7 @@ export class GirModule {
                           ownName: string, otherName: string) {
         const name = fn[1]
         if (!name) return
-        doLog = name === "set_hadjustment"
+        doLog = true
         let ownRec = ownMethodsMap.get(name)
         let anyRec = allMethodsMap.get(name)
         if (!ownRec) {
@@ -1027,6 +1026,7 @@ export class GirModule {
             if (ownRec.length === 2)
                 ownRec.push(`    ${name}<T, V>(arg?: T): V`)
         }
+        doLog = false
         return
     }
 
