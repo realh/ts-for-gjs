@@ -9,7 +9,7 @@ import fs = require('fs')
 
 let doLog = false
 function debLog(s: any) {
-    if (doLog) console.log(s)
+    if (doLog) console.log("* " + s)
 }
 
 interface TsForGjsExtended {
@@ -999,31 +999,47 @@ export class GirModule {
                           fn: FunctionDescription, add: boolean,
                           ownName: string, otherName: string,
                           prefix = "") {
+        debLog(`    **** ${fn[0]}`)
         const name = fn[1]
         if (!name) return
         let ownRec = ownMethodsMap.get(name)
         let anyRec = allMethodsMap.get(name)
         if (!ownRec) {
             if (anyRec) {
-                ownMethodsMap.set(name, anyRec)
+                debLog(`        ${name} is defined in more than one interface/superclass`)
+                //ownMethodsMap.set(name, anyRec)
                 ownRec = anyRec
-            } else if (add) {
-                ownMethodsMap.set(name, fn[0])
+            } else {
+                if (add) {
+                    debLog(`        ${fn[0]} must be implemented`)
+                    ownMethodsMap.set(name, fn[0])
+                } else {
+                    debLog(`        Remembering ${fn[0]}`)
+                }
                 allMethodsMap.set(name, fn[0])
                 return
-            } else {
-                return
             }
+        } else {
+            debLog(`        ${name} is already implemented as ${ownRec}`)
         }
         if (ownRec) {
             for (const defn of ownRec) {
-                if (!this.functionsClash(fn, [[defn], name]))
+                if (!this.functionsClash(fn, [[defn], name])) {
+                    debLog(`        ${name} is identical to an existing implementation`)
                     return
+                }
+            }
+            if (!ownMethodsMap.get(name)) {
+                debLog(`        Adding first found definition ${ownRec}`)
+                ownMethodsMap.set(name, ownRec)
             }
             console.warn(`Method ${prefix}${name} in ${ownName} clashes with one inherited from ${otherName}`)
+            debLog(`        Adding new overload ${fn[0]}`)
             ownRec.unshift(...fn[0])
-            if (ownRec.length === 2)
+            if (ownRec.length === 2) {
+                debLog(`        Adding generic ${prefix}${name}<T, V>(arg?: T): V`)
                 ownRec.push(`    ${prefix}${name}<T, V>(arg?: T): V`)
+            }
         }
         return
     }
@@ -1034,26 +1050,34 @@ export class GirModule {
         const ownMethodsArr = getMethods(cls)
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
+        debLog(`>>>> processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
         for (const m of ownMethodsArr) {
+            debLog(`    Adding own method ${prefix}${m[1]}`)
             if (m[1]) {
                 ownMethodsMap.set(m[1], m[0])
                 allMethodsMap.set(m[1], m[0])
             }
         }
         // Check for clashes in superclasses
+        debLog("**** Superclass methods")
         this.traverseInheritanceTree(cls, e => {
             for (const m of getMethods(e)) {
+                debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
                 this.checkOverload(ownMethodsMap, allMethodsMap, m, false,
                     cls._fullSymName || "", e._fullSymName || "", prefix)
+                debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
             }
         })
         // Check whether any methods from implemented interfaces clash and
         // simultaneously add declarations to satisfy implemented interfaces
         // if this is a class definition.
+        debLog("**** Interface methods")
         this.forEachInterface(cls, e => {
             for (const m of getMethods(e)) {
+                debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
                 this.checkOverload(ownMethodsMap, allMethodsMap, m, forClass,
                     cls._fullSymName || "", e._fullSymName || "", prefix)
+                debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
             }
         }, !forClass)
         // Export the methods
@@ -1063,12 +1087,16 @@ export class GirModule {
         }
         if (def.length)
             def.unshift(`    // ${methodType} methods`)
+        debLog(`<<<< processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
         return def
     }
 
     private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
-        return this.processOverloadableMethods(cls, forClass,
+        doLog = cls._fullSymName == "Gio.IOModule"
+        const result = this.processOverloadableMethods(cls, forClass,
             e => this.getInstanceMethods(e), "Instance")
+        doLog = false
+        return result
     }
 
     private processVirtualMethods(cls: GirClass, forClass: boolean): string[] {
