@@ -763,15 +763,15 @@ export class GirModule {
     }
 
     // 1. Signal details are provided by a GirFunction
-    private getSignalFunc(e: GirFunction, clsName: string)
+    private getSignalFuncs(e: GirFunction, clsName: string)
     // 2. Signal details are provided as signal name, target class name,
     //    params (excluding arg1: emitter) and return type as strings
-    private getSignalFunc(sigName: string, clsName: string, params: string,
+    private getSignalFuncs(sigName: string, clsName: string, params: string,
                           retType: string)
     // 3. Gets the standard generic signal functions for a named class
-    private getSignalFunc(clsName: string)
+    private getSignalFuncs(clsName: string)
     // 4. Implementation
-    private getSignalFunc(signal: string | GirFunction, clsName?: string,
+    private getSignalFuncs(signal: string | GirFunction, clsName?: string,
                           params?: string, retType?: string) {
         let gen = ""
         const genDef = "<T extends string, V extends Function>"
@@ -930,7 +930,7 @@ export class GirModule {
                 let [aDesc, added] = this.checkName(desc, name, localNames)
                 def = def.concat(aDesc)
                 if (added && origName) {
-                    def.concat(this.getSignalFunc(`notify::${p}`, name || "",
+                    def.concat(this.getSignalFuncs(`notify::${p}`, name || "",
                         `pspec: ${prefix}ParamSpec)`, "void"))
                 }
             }
@@ -1084,11 +1084,11 @@ export class GirModule {
         if (signals && signals.length) {
             def.push(`    // Signals of ${cls._fullSymName}`)
             for (let s of signals)
-                def = def.concat(this.getSignalFunc(s, cls.$.name))
+                def = def.concat(this.getSignalFuncs(s, cls.$.name))
             // If this class/interface has signals we need to redeclare
             // the generic signal functions
             if (cls._fullSymName !== "GObject.Object") {
-                def = def.concat(this.getSignalFunc(cls.$.name))
+                def = def.concat(this.getSignalFuncs(cls.$.name))
             }
         }
         return def
