@@ -505,7 +505,7 @@ export class GirModule {
         } else
             returnType = "void"
 
-        let outArrayLengthIndex = returnVal.array && returnVal.array[0].$.length
+        let outArrayLengthIndex = returnVal && returnVal.array && returnVal.array[0].$.length
             ? Number(returnVal.array[0].$.length)
             : -1
 
