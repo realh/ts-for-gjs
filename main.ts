@@ -1038,6 +1038,31 @@ export class GirModule {
         return
     }
 
+    // Some classes implement interfaces which are also implemented by a superclass
+    // and we need to exclude those in some circumstances
+    private interfaceIsDuplicate(cls: GirClass, iface: GirClass | string): boolean {
+        if (typeof iface !== "string") {
+            if (!iface._fullSymName) return false
+            iface = iface._fullSymName
+        }
+        let rpt = false
+        let bottom = true
+        this.traverseInheritanceTree(cls, sub => {
+            if (rpt) return
+            if (bottom) {
+                bottom = false
+                return
+            }
+            this.forEachInterface(sub, e => {
+                if (rpt) return
+                if (e._fullSymName === iface) {
+                    rpt = true
+                }
+            }, true)
+        })
+        return rpt
+    }
+
     private processOverloadableMethods(cls: GirClass, forClass: boolean,
             getMethods: (e: GirClass) => FunctionDescription[],
             methodType: string, prefix = ""): string[] {
@@ -1067,9 +1092,14 @@ export class GirModule {
         // if this is a class definition.
         debLog("**** Interface methods")
         this.forEachInterface(cls, e => {
+            let add = forClass
+            if (add && this.interfaceIsDuplicate(cls, e)) {
+                debLog(`   Disabling add for interface ${e._fullSymName} implemented by a superclass`)
+                add = false
+            }
             for (const m of getMethods(e)) {
                 debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-                this.checkOverload(ownMethodsMap, allMethodsMap, m, forClass,
+                this.checkOverload(ownMethodsMap, allMethodsMap, m, add,
                     cls._fullSymName || "", e._fullSymName || "", prefix)
                 debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
             }
@@ -1229,17 +1259,28 @@ export class GirModule {
         return {name, qualifiedName, parentName, qualifiedParentName, localParentName}
     }
 
+    // This uses interfaceIsDuplicate() to filter out interfaces implemented
+    // by subclasses
     private forEachImplementedLocalName(e: GirClass, callback: (name: string) => void) {
         if (e.implements) {
             for (const i of e.implements) {
                 let name = i.$.name
                 if (!name) continue
+                let fullName
                 if (name.indexOf('.') >= 0) {
+                    fullName = name
                     let [mod, local] = name.split('.')
                     if (mod == this.name)
                         name = local
+                } else {
+                    fullName = (this.name || "") + "." + name
                 }
-                callback(name)
+                if (this.interfaceIsDuplicate(e, fullName)) {
+                    debLog(`forEachImplementedLocalName excluding ${fullName} ` +
+                        `implmented by a superclass of ${e._fullSymName}`)
+                } else {
+                    callback(name)
+                }
             }
         }
     }
