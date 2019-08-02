@@ -1284,7 +1284,7 @@ export class GirModule {
     }
 
     // Represents a record or GObject class as a Typescript class
-    private exportClassInternal(e: GirClass) {
+    private exportClassInternal(e: GirClass, record = false) {
         if (e.$ && e.$["glib:is-gtype-struct-for"]) {
             return []   
         }
@@ -1327,7 +1327,8 @@ export class GirModule {
             def = def.concat(this.processProperties(cls, localNames))
         })
         // Can't export fields for GObjects because names would clash
-        //def = def.concat(this.processFields(e, localNames))
+        if (record)
+            def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, true))
         def = def.concat(this.processVirtualMethods(e, true))
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
@@ -1411,12 +1412,6 @@ export class GirModule {
     exportInterface(e: GirClass) {
         let def = this.exportInterfaceInternal(e)
         def = def.concat(this.exportIfaceObject(e))
-        return def
-    }
-
-    exportClass(e: GirClass) {
-        let def = this.exportInterfaceInternal(e)
-        def = def.concat(this.exportClassInternal(e))
         return def
     }
 
@@ -1509,12 +1504,12 @@ export class GirModule {
         if (this.ns.class)
             for (let e of this.ns.class) {
                 out = out.concat(this.exportInterfaceInternal(e))
-                out = out.concat(this.exportClassInternal(e))
+                out = out.concat(this.exportClassInternal(e, false))
             }
 
         if (this.ns.record)
             for (let e of this.ns.record)
-                out = out.concat(this.exportClass(e))
+                out = out.concat(this.exportClassInternal(e, true))
 
         if (this.ns.union)
             for (let e of this.ns.union)
