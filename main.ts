@@ -997,7 +997,8 @@ export class GirModule {
     private checkOverload(ownMethodsMap: Map<string, string[]>,
                           allMethodsMap: Map<string, string[]>,
                           fn: FunctionDescription, add: boolean,
-                          ownName: string, otherName: string) {
+                          ownName: string, otherName: string,
+                          prefix = "") {
         const name = fn[1]
         if (!name) return
         let ownRec = ownMethodsMap.get(name)
@@ -1019,16 +1020,18 @@ export class GirModule {
                 if (!this.functionsClash(fn, [[defn], name]))
                     return
             }
-            console.warn(`Method ${name} in ${ownName} clashes with one inherited from ${otherName}`)
+            console.warn(`Method ${prefix}${name} in ${ownName} clashes with one inherited from ${otherName}`)
             ownRec.unshift(...fn[0])
             if (ownRec.length === 2)
-                ownRec.push(`    ${name}<T, V>(arg?: T): V`)
+                ownRec.push(`    ${prefix}${name}<T, V>(arg?: T): V`)
         }
         return
     }
 
-    private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
-        const ownMethodsArr = this.getInstanceMethods(cls)
+    private processOverloadableMethods(cls: GirClass, forClass: boolean,
+            getMethods: (e: GirClass) => FunctionDescription[],
+            methodType: string, prefix = ""): string[] {
+        const ownMethodsArr = getMethods(cls)
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
         for (const m of ownMethodsArr) {
@@ -1039,43 +1042,43 @@ export class GirModule {
         }
         // Check for clashes in superclasses
         this.traverseInheritanceTree(cls, e => {
-            for (const m of this.getInstanceMethods(e)) {
+            for (const m of getMethods(e)) {
                 this.checkOverload(ownMethodsMap, allMethodsMap, m, false,
-                    cls._fullSymName || "", e._fullSymName || "")
+                    cls._fullSymName || "", e._fullSymName || "", prefix)
             }
         })
         // Check whether any methods from implemented interfaces clash and
         // simultaneously add declarations to satisfy implemented interfaces
         // if this is a class definition.
         this.forEachInterface(cls, e => {
-            for (const m of this.getInstanceMethods(e)) {
+            for (const m of getMethods(e)) {
                 this.checkOverload(ownMethodsMap, allMethodsMap, m, forClass,
-                    cls._fullSymName || "", e._fullSymName || "")
+                    cls._fullSymName || "", e._fullSymName || "", prefix)
             }
         }, !forClass)
         // Export the methods
-        let def: string[] = ["    // Instance methods"]
+        let def: string[] = []
         for (const m of Array.from(ownMethodsMap.values())) {
             def = def.concat(m)
         }
+        if (def.length)
+            def.unshift(`    // ${methodType} methods`)
         return def
     }
 
-    private processVirtualMethods(cls: GirClass, localNames: any): string[] {
-        let def: string[] = []
-        let vmeth = cls["virtual-method"]
-        if (vmeth) {
-            def.push(`    // Virtual methods of ${cls._fullSymName}`)
-            for (let f of vmeth) {
-                let [desc, name] = this.getFunction(f, "    ", "vfunc_")
-                desc = this.checkName(desc, name, localNames)[0]
-                if (desc[0]) {
-                    desc[0] = desc[0].replace("(", "?(")
-                }
-                def = def.concat(desc)
-            }
-        }
-        return def
+    private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
+        return this.processOverloadableMethods(cls, forClass,
+            e => this.getInstanceMethods(e), "Instance")
+    }
+
+    private processVirtualMethods(cls: GirClass, forClass: boolean): string[] {
+        return this.processOverloadableMethods(cls, forClass, e => {
+            return (e["virtual-method"] || []).map(f => {
+                const desc = this.getFunction(e, "    ", "vfunc_", this)
+                desc[0][0] = desc[0][0].replace("(", "?(")
+                return desc
+            })
+        }, "Virtual", "vfunc_")
     }
 
     private processSignals(cls: GirClass): string[] {
@@ -1243,7 +1246,7 @@ export class GirModule {
         // See similar commented line in exportClassInternal
         //def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, false))
-        def = def.concat(this.processVirtualMethods(e, localNames))
+        def = def.concat(this.processVirtualMethods(e, false))
         // Overloading signal functions doesn't seem to work in interfaces
         //def = def.concat(this.processSignals(e))
 
@@ -1298,9 +1301,7 @@ export class GirModule {
         // Can't export fields for GObjects because names would clash
         //def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, true))
-        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
-            def = def.concat(this.processVirtualMethods(cls, localNames))
-        })
+        def = def.concat(this.processVirtualMethods(e, true))
         this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
             def = def.concat(this.processSignals(cls))
         })
