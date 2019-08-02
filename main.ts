@@ -878,12 +878,6 @@ export class GirModule {
         }
     }
 
-    private forEachSuperAndInterface(e: GirClass,
-                                     callback: ((cls: GirClass) => void)) {
-        this.traverseInheritanceTree(e, callback)
-        this.forEachInterface(e, callback)
-    }
-
     private forEachInterfaceAndSelf(e: GirClass,
                                     callback: ((cls: GirClass) => void)) {
         callback(e)
