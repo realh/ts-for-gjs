@@ -1116,7 +1116,6 @@ export class GirModule {
     }
 
     private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
-        doLog = cls._fullSymName == "Gio.IOModule"
         const result = this.processOverloadableMethods(cls, forClass,
             e => this.getInstanceMethods(e), "Instance")
         doLog = false
@@ -1354,7 +1353,8 @@ export class GirModule {
         if (e.implements) {
             const impl: string[] = []
             this.forEachImplementedLocalName(e, n => impl.push(n))
-            parents += " implements " + impl.join(',')
+            if (impl.length)
+                parents += " implements " + impl.join(',')
         }
         def.push(`export class ${name}${parents} {`)
         let localNames = {}
@@ -1538,6 +1538,7 @@ export class GirModule {
 
         if (this.ns.class)
             for (let e of this.ns.class) {
+                doLog = e._fullSymName == "Gio.IOModule"
                 out = out.concat(this.exportInterfaceInternal(e))
                 out = out.concat(this.exportClassInternal(e, false))
             }
