@@ -697,6 +697,8 @@ export class GirModule {
 
         if (funcNamePrefix)
             name = funcNamePrefix + name
+        else
+            funcNamePrefix = ""
 
         if (e._fullSymName == 'Gtk.Container.child_notify') {
             debugger;
@@ -1017,7 +1019,7 @@ export class GirModule {
             }
             return true
         })
-        let methods = methodNames.map(f => this.getFunction(f, "    ", null, this))
+        let methods = methodNames.map(f => this.getFunction(f, "    ", "", this))
         // GObject.Object signal methods aren't introspected. All classes must
         // (re)define these base versions to support overloading with specific
         // signals
@@ -1145,7 +1147,7 @@ export class GirModule {
         this.warnMethodPropClash = false
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
-        doLog = cls._fullSymName == "Gtk.AppChooserDialog"
+        doLog = cls._fullSymName == "Gtk.CellAccessible"
         debLog(`>>>> processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
         for (const m of ownMethodsArr) {
             debLog(`    Adding own method ${prefix}${m[1]}`)
@@ -1203,7 +1205,7 @@ export class GirModule {
 
     private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
         const result = this.processOverloadableMethods(cls, forClass,
-            e => this.getInstanceMethods(e), "Instance")
+            e => this.getInstanceMethods(e), "Instance", "")
         return result
     }
 
