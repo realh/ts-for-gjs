@@ -1105,7 +1105,8 @@ export class GirModule {
                 }
             }
         }
-        debLog(`    All matched`)
+        if (!result)
+            debLog(`    All matched`)
         return result
     }
 
