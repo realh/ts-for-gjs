@@ -1071,31 +1071,42 @@ export class GirModule {
         return `${lb[0]}(${params})${tail}`
     }
 
-    // This relies on f1[0] and f2[0] containing one definition per line
+    // This checks whether all definitions from f2 have a match in f1. It
+    // returns true if any of f2 is missing from f1.
+    // If add is true it adds the missing 
+    // It relies on f1[0] and f2[0] containing one definition per line
     private functionsClash(f1: FunctionDescription, f2: FunctionDescription,
-            ignoreTail = false) {
+            ignoreTail = false, add = false) {
         if (f1[1] != f2[1] || !f1) {
             return false
         }
-        let match = false
-        let d1 = "undef"
-        let d2 = "undef"
-        for (const n1 in f1[0]) {
-            d1 = f1[0][n1]
-            const s1 = this.stripParamNames(d1, ignoreTail)
-            for (const n2 in f2[0]) {
-                d2 = f2[0][n2]
-                //console.log(`d2 '${d2}', type ${typeof d2}`)
-                const s2 = this.stripParamNames(d2, ignoreTail)
-                if (d1 === d2) {
+        let result = false
+        for (const n2 in f2[0]) {
+            const d2 = f2[0][n2]
+            const s2 = this.stripParamNames(d2, ignoreTail)
+            let match = false
+            for (const n1 in f1[0]) {
+                const d1 = f1[0][n1]
+                const s1 = this.stripParamNames(d1, ignoreTail)
+                debLog(`        Comparing '${s1}' with '${s2}'`)
+                if (s1 === s2) {
+                    debLog(`        Match`)
                     match = true
                     break
                 }
             }
-            if (match)
-                break
+            if (!match) {
+                debLog(`        No match`)
+                result = true
+                if (add) {
+                    f1[0].push(d2)
+                } else {
+                    break
+                }
+            }
         }
-        return !match
+        debLog(`    All matched`)
+        return result
     }
 
     // If add is true this adds fn to ownMethodsMap if it isn't already
@@ -1107,9 +1118,12 @@ export class GirModule {
                           fn: FunctionDescription, add: boolean,
                           ownName: string, otherName: string,
                           prefix = "") {
-        debLog(`    **** ${fn[0]}`)
         const name = fn[1]
         if (!name) return
+        const didLog = doLog
+        doLog = doLog && name == "connect"
+        debLog(`        Checking whether  ${name} [${fn[0]}] needs overload`)
+        debLog(`        in [${ownMethodsMap.get(name)}]`)
         let ownRec = ownMethodsMap.get(name)
         let anyRec = allMethodsMap.get(name)
         if (!ownRec) {
@@ -1125,30 +1139,32 @@ export class GirModule {
                     debLog(`        Remembering ${fn[0]}`)
                 }
                 allMethodsMap.set(name, fn[0])
+                doLog = didLog
                 return
             }
         } else {
-            debLog(`        ${name} is already implemented as ${ownRec}`)
+            debLog(`        ${name} is already implemented as [${ownRec}]`)
         }
         if (ownRec) {
-            for (const defn of ownRec) {
-                if (!this.functionsClash(fn, [[defn], name])) {
-                    debLog(`        ${name} is identical to an existing implementation`)
-                    return
-                }
+            if (!this.functionsClash([ownRec, name], fn, false, true)) {
+                debLog(`        ${name} was already covered`)
+                doLog = didLog
+                return
             }
             if (!ownMethodsMap.get(name)) {
-                debLog(`        Adding first found definition ${ownRec}`)
+                debLog(`        Adding anyRec [${ownRec}]`)
                 ownMethodsMap.set(name, ownRec)
+            } else {
+                debLog(`        ownRec updated to [${ownRec}]`)
             }
             //console.warn(`Method ${prefix}${name} in ${ownName} clashes with one inherited from ${otherName}`)
-            debLog(`        Adding new overload ${fn[0]}`)
-            ownRec.unshift(...fn[0])
-            if (ownRec.length === 2) {
-                debLog(`        Adding generic ${prefix}${name}<T, V>(arg?: T): V`)
-                ownRec.push(`    ${prefix}${name}<T, V>(arg?: T): V`)
+            const gen = `    ${prefix}${name}<T, V>(arg?: T): V`
+            if (ownRec[ownRec.length - 1] !== gen) {
+                debLog(`        Adding generic ${gen}`)
+                ownRec.push(gen)
             }
         }
+        doLog = didLog
         return
     }
 
@@ -1185,6 +1201,7 @@ export class GirModule {
         this.warnMethodPropClash = false
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
+        doLog = cls._fullSymName === "Gio.TcpConnection"
         debLog(`>>>> processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
         for (const m of ownMethodsArr) {
             debLog(`    Adding own method ${prefix}${m[1]}: ${m[0]}`)
@@ -1231,6 +1248,7 @@ export class GirModule {
         if (def.length)
             def.unshift(`    // ${methodType} methods`)
         debLog(`<<<< processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
+        doLog = false
         return def
     }
 
@@ -2004,5 +2022,11 @@ function main() {
     console.log("Done.")
 }
 
-if (require.main === module)
-    main();
+if (require.main === module) {
+    try {
+        main()
+    } catch (ex) {
+        console.log(`Exception: ${ex}`)
+        console.log(ex.stack)
+    }
+}
