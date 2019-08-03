@@ -1262,7 +1262,7 @@ export class GirModule {
     private processVirtualMethods(cls: GirClass, forClass: boolean): string[] {
         return this.processOverloadableMethods(cls, forClass, e => {
             return (e["virtual-method"] || []).map(f => {
-                const desc = this.getFunction(e, "    ", "vfunc_", this)
+                const desc = this.getFunction(f, "    ", "vfunc_", this)
                 desc[0][0] = desc[0][0].replace("(", "?(")
                 return desc
             })
