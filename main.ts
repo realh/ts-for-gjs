@@ -948,7 +948,31 @@ export class GirModule {
     }
 
     private getInstanceMethods(cls: GirClass): FunctionDescription[] {
-        let methods = (cls.method || []).map(f => this.getFunction(f, "    ", null, this))
+        //doLog = cls._fullSymName === "Gtk.Widget"
+        const didLog = doLog
+        doLog = false
+        debLog(`    >>>> getInstanceMethods of ${cls._fullSymName}`)
+        // Some methods have the same name as properties, give priority to properties
+        // by filtering out those names
+        const dash = /-/g
+        let propNames = new Set<string>()
+        for (const p of cls.property || []) {
+            if (p.$.name) {
+                debLog(`        Found property ${p.$.name}`)
+                propNames.add(p.$.name.replace(dash, '_'))
+            }
+        }
+        //let methodNames = (cls.method || []).filter(m => !propNames.has(m.$.name))
+        let methodNames = (cls.method || []).filter(m => {
+            if (propNames.has(m.$.name)) {
+                debLog(`        Method ${m.$.name} clashes with a property`)
+                return false
+            } else {
+                debLog(`        Method ${m.$.name} doesn't clash with a property`)
+                return true
+            }
+        })
+        let methods = methodNames.map(f => this.getFunction(f, "    ", null, this))
         // GObject.Object signal methods aren't introspected
         if (cls._fullSymName === "GObject.Object") {
             methods.push(
@@ -956,6 +980,7 @@ export class GirModule {
                 [["    connect_after(sigName: string, callback: Function): number"], "connect_after"],
                 [["    emit(sigName: string, ...args: any[]): void"], "emit"])
         }
+        doLog = didLog
         return methods
     }
 
@@ -1027,7 +1052,7 @@ export class GirModule {
                 debLog(`        Adding first found definition ${ownRec}`)
                 ownMethodsMap.set(name, ownRec)
             }
-            console.warn(`Method ${prefix}${name} in ${ownName} clashes with one inherited from ${otherName}`)
+            //console.warn(`Method ${prefix}${name} in ${ownName} clashes with one inherited from ${otherName}`)
             debLog(`        Adding new overload ${fn[0]}`)
             ownRec.unshift(...fn[0])
             if (ownRec.length === 2) {
@@ -1069,6 +1094,7 @@ export class GirModule {
         const ownMethodsArr = getMethods(cls)
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
+        doLog = cls._fullSymName == "Gtk.AppChooserDialog"
         debLog(`>>>> processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
         for (const m of ownMethodsArr) {
             debLog(`    Adding own method ${prefix}${m[1]}`)
@@ -1080,11 +1106,14 @@ export class GirModule {
         // Check for clashes in superclasses
         debLog("**** Superclass methods")
         this.traverseInheritanceTree(cls, e => {
+            const didLog = doLog
             for (const m of getMethods(e)) {
+                doLog = doLog && (m[1] === "connect")
                 debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
                 this.checkOverload(ownMethodsMap, allMethodsMap, m, false,
                     cls._fullSymName || "", e._fullSymName || "", prefix)
                 debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
+                doLog = didLog
             }
         })
         // Check whether any methods from implemented interfaces clash and
@@ -1097,11 +1126,14 @@ export class GirModule {
                 debLog(`   Disabling add for interface ${e._fullSymName} implemented by a superclass`)
                 add = false
             }
+            const didLog = doLog
             for (const m of getMethods(e)) {
+                doLog = doLog && (m[1] === "connect")
                 debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
                 this.checkOverload(ownMethodsMap, allMethodsMap, m, add,
                     cls._fullSymName || "", e._fullSymName || "", prefix)
                 debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
+                doLog = didLog
             }
         }, !forClass)
         // Export the methods
@@ -1112,13 +1144,13 @@ export class GirModule {
         if (def.length)
             def.unshift(`    // ${methodType} methods`)
         debLog(`<<<< processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
+        doLog = false
         return def
     }
 
     private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
         const result = this.processOverloadableMethods(cls, forClass,
             e => this.getInstanceMethods(e), "Instance")
-        doLog = false
         return result
     }
 
@@ -1180,7 +1212,6 @@ export class GirModule {
                     break
                 }
             }
-            doLog = false
         });
         const stat = (clash && desc.indexOf("    static") == 0) ? "static " : ""
         return clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
@@ -1538,7 +1569,6 @@ export class GirModule {
 
         if (this.ns.class)
             for (let e of this.ns.class) {
-                doLog = e._fullSymName == "Gio.IOModule"
                 out = out.concat(this.exportInterfaceInternal(e))
                 out = out.concat(this.exportClassInternal(e, false))
             }
