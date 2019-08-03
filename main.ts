@@ -1,6 +1,7 @@
 // TODO:
-// * vfuncs need overloads too
-// * Reuse same function for overloading instance, virtual and static methods
+// * If an interface inherits the same method from more than one other interface
+//   it needs to be overloaded in the new interface even if the signatures are
+//   identical
 
 import * as xml2js from 'xml2js'
 import * as lodash from 'lodash'
