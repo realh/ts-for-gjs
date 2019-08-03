@@ -916,16 +916,53 @@ export class GirModule {
     private processProperties(cls: GirClass, localNames: any): string[] {
         let def: string[] = []
         if (cls.property) {
-            let prefix = "GObject."
-            if (this.name == "GObject") prefix = ""
-            def.push(`    // Properties of ${cls._fullSymName}`)
-            for (let p of cls.property) {
-                let [desc, name, origName] = this.getProperty(p, false)
-                let [aDesc, added] = this.checkName(desc, name, localNames)
-                def = def.concat(aDesc)
-                if (added && origName) {
-                    def.concat(this.getSignalFuncs(`notify::${p}`, name || "",
-                        `pspec: ${prefix}ParamSpec)`, "void"))
+            // If a property clashes with a method in the same class, the property
+            // takes priority and processInstanceMethods will filter out the method.
+            // However, if a property clashes with an inherited method we have to
+            // skip the property instead.
+            const under = /_/g
+            const methodNames = new Set<string>()
+            let bottom = true
+            this.traverseInheritanceTree(cls, scls => {
+                let iter
+                if (bottom) {
+                    iter = (e: GirClass, cb: (e: GirClass)=>void) => {
+                        this.forEachInterface(e, cb)
+                    }
+                    bottom = false
+                } else {
+                    iter = (e: GirClass, cb: (e: GirClass)=>void) => {
+                        this.forEachInterfaceAndSelf(e, cb)
+                    }
+                }
+                iter(scls, e => {
+                    for (const m of e.method || []) {
+                        if (m.$.name) {
+                            methodNames.add(m.$.name.replace(under, '-'))
+                        }
+                    }
+                })
+            })
+            const props = cls.property.filter(p => {
+                if (p.$.name && methodNames.has(p.$.name)) {
+                    console.warn(`Hiding property ${cls._fullSymName}.${p.$.name} ` +
+                        "due to a clash with an inherited method")
+                    return false
+                }
+                return true
+            })
+            if (props.length) {
+                let prefix = "GObject."
+                if (this.name == "GObject") prefix = ""
+                def.push(`    // Properties of ${cls._fullSymName}`)
+                for (let p of props) {
+                    let [desc, name, origName] = this.getProperty(p, false)
+                    let [aDesc, added] = this.checkName(desc, name, localNames)
+                    def = def.concat(aDesc)
+                    if (added && origName) {
+                        def.concat(this.getSignalFuncs(`notify::${p}`, name || "",
+                            `pspec: ${prefix}ParamSpec)`, "void"))
+                    }
                 }
             }
         }
@@ -1357,7 +1394,7 @@ export class GirModule {
         def = def.concat(this.processInstanceMethods(e, false))
         def = def.concat(this.processVirtualMethods(e, false))
         // Overloading signal functions doesn't seem to work in interfaces
-        //def = def.concat(this.processSignals(e))
+        def = def.concat(this.processSignals(e))
 
         def.push('}')
 
@@ -1413,9 +1450,7 @@ export class GirModule {
             def = def.concat(this.processFields(e, localNames))
         def = def.concat(this.processInstanceMethods(e, true))
         def = def.concat(this.processVirtualMethods(e, true))
-        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
-            def = def.concat(this.processSignals(cls))
-        })
+        def = def.concat(this.processSignals(e))
 
         // JS constructor(s)
         if (isDerivedFromGObject) {
