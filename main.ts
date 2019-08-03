@@ -1052,10 +1052,10 @@ export class GirModule {
             debLog(`Adding signal methods to ${cls._fullSymName}`)
             this.addSignalMethod(methods, "connect",
                 ["    connect(sigName: string, callback: Function): number",
-                 "    connect<T extends string, V extends function>(sigName: T, callback: V): number"])
+                 "    connect<T extends string, V extends Function>(sigName: T, callback: V): number"])
             this.addSignalMethod(methods, "connect_after",
                 ["    connect_after(sigName: string, callback: Function): number",
-                 "    connect_after<T extends string, V extends function>(sigName: T, callback: V): number"])
+                 "    connect_after<T extends string, V extends Function>(sigName: T, callback: V): number"])
             this.addSignalMethod(methods, "emit",
                 ["    emit(sigName: string, ...args: any[]): void",
                  "    emit<T extends string>(sigName: T, ...args: any[]): void"])
