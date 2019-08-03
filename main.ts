@@ -1261,11 +1261,14 @@ export class GirModule {
 
     private processVirtualMethods(cls: GirClass, forClass: boolean): string[] {
         return this.processOverloadableMethods(cls, forClass, e => {
-            return (e["virtual-method"] || []).map(f => {
+            let methods = (e["virtual-method"] || []).map(f => {
                 const desc = this.getFunction(f, "    ", "vfunc_", this)
-                desc[0][0] = desc[0][0].replace("(", "?(")
+                if (desc[0].length)
+                    desc[0][0] = desc[0][0].replace("(", "?(")
                 return desc
             })
+            methods = methods.filter(f => f[1] != null)
+            return methods
         }, "Virtual", "vfunc_")
     }
 
