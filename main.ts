@@ -947,6 +947,16 @@ export class GirModule {
         return def
     }
 
+    private addSignalMethod(methods: FunctionDescription[], name: string, desc: string) {
+        let old = methods.find(e => e[1] === name)
+        if (old) {
+            if (!old[0].find(e => e === desc))
+                old[0].push(desc)
+        } else {
+            methods.push([[desc], name])
+        }
+    }
+
     private getInstanceMethods(cls: GirClass): FunctionDescription[] {
         // Some methods have the same name as properties, give priority to properties
         // by filtering out those names
@@ -958,12 +968,17 @@ export class GirModule {
         }
         let methodNames = (cls.method || []).filter(m => !propNames.has(m.$.name))
         let methods = methodNames.map(f => this.getFunction(f, "    ", null, this))
-        // GObject.Object signal methods aren't introspected
-        if (cls._fullSymName === "GObject.Object") {
-            methods.push(
-                [["    connect(sigName: string, callback: Function): number"], "connect"],
-                [["    connect_after(sigName: string, callback: Function): number"], "connect_after"],
-                [["    emit(sigName: string, ...args: any[]): void"], "emit"])
+        // GObject.Object signal methods aren't introspected. All classes must
+        // (re)define these base versions to support overloading with specific
+        // signals
+        //if (cls._fullSymName === "GObject.Object") {
+        if (this.isDerivedFromGObject(cls)) {
+            this.addSignalMethod(methods, "connect",
+                "    connect(sigName: string, callback: Function): number")
+            this.addSignalMethod(methods, "connect_after",
+                "    connect_after(sigName: string, callback: Function): number")
+            this.addSignalMethod(methods, "emit",
+                "    emit(sigName: string, ...args: any[]): void")
         }
         return methods
     }
@@ -1090,6 +1105,7 @@ export class GirModule {
         // Check for clashes in superclasses
         debLog("**** Superclass methods")
         this.traverseInheritanceTree(cls, e => {
+            debLog(`  Superclass ${e._fullSymName}`)
             const didLog = doLog
             for (const m of getMethods(e)) {
                 doLog = doLog && (m[1] === "connect")
@@ -1105,6 +1121,7 @@ export class GirModule {
         // if this is a class definition.
         debLog("**** Interface methods")
         this.forEachInterface(cls, e => {
+            debLog(`  Interface ${e._fullSymName}`)
             let add = forClass
             if (add && this.interfaceIsDuplicate(cls, e)) {
                 debLog(`   Disabling add for interface ${e._fullSymName} implemented by a superclass`)
@@ -1119,7 +1136,7 @@ export class GirModule {
                 debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
                 doLog = didLog
             }
-        }, !forClass)
+        }, true)
         // Export the methods
         let def: string[] = []
         for (const m of Array.from(ownMethodsMap.values())) {
