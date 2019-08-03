@@ -957,6 +957,8 @@ export class GirModule {
         }
     }
 
+    private warnMethodPropClash = false
+
     private getInstanceMethods(cls: GirClass): FunctionDescription[] {
         // Some methods have the same name as properties, give priority to properties
         // by filtering out those names
@@ -968,8 +970,11 @@ export class GirModule {
         }
         let methodNames = (cls.method || []).filter(m => {
             if (propNames.has(m.$.name)) {
-                console.warn(`Removing method ${cls._fullSymName}.${m.$.name} due to a clash with a property`)
+                if (this.warnMethodPropClash)
+                    console.warn(`Removing method ${cls._fullSymName}.${m.$.name} due to a clash with a property`)
+                return false
             }
+            return true
         })
         let methods = methodNames.map(f => this.getFunction(f, "    ", null, this))
         // GObject.Object signal methods aren't introspected. All classes must
@@ -1094,7 +1099,9 @@ export class GirModule {
     private processOverloadableMethods(cls: GirClass, forClass: boolean,
             getMethods: (e: GirClass) => FunctionDescription[],
             methodType: string, prefix = ""): string[] {
+        this.warnMethodPropClash = true
         const ownMethodsArr = getMethods(cls)
+        this.warnMethodPropClash = false
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
         doLog = cls._fullSymName == "Gtk.AppChooserDialog"
