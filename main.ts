@@ -948,30 +948,15 @@ export class GirModule {
     }
 
     private getInstanceMethods(cls: GirClass): FunctionDescription[] {
-        //doLog = cls._fullSymName === "Gtk.Widget"
-        const didLog = doLog
-        doLog = false
-        debLog(`    >>>> getInstanceMethods of ${cls._fullSymName}`)
         // Some methods have the same name as properties, give priority to properties
         // by filtering out those names
         const dash = /-/g
         let propNames = new Set<string>()
         for (const p of cls.property || []) {
-            if (p.$.name) {
-                debLog(`        Found property ${p.$.name}`)
+            if (p.$.name)
                 propNames.add(p.$.name.replace(dash, '_'))
-            }
         }
-        //let methodNames = (cls.method || []).filter(m => !propNames.has(m.$.name))
-        let methodNames = (cls.method || []).filter(m => {
-            if (propNames.has(m.$.name)) {
-                debLog(`        Method ${m.$.name} clashes with a property`)
-                return false
-            } else {
-                debLog(`        Method ${m.$.name} doesn't clash with a property`)
-                return true
-            }
-        })
+        let methodNames = (cls.method || []).filter(m => !propNames.has(m.$.name))
         let methods = methodNames.map(f => this.getFunction(f, "    ", null, this))
         // GObject.Object signal methods aren't introspected
         if (cls._fullSymName === "GObject.Object") {
@@ -980,7 +965,6 @@ export class GirModule {
                 [["    connect_after(sigName: string, callback: Function): number"], "connect_after"],
                 [["    emit(sigName: string, ...args: any[]): void"], "emit"])
         }
-        doLog = didLog
         return methods
     }
 
