@@ -1044,7 +1044,7 @@ export class GirModule {
 
         // GObject.Object signal methods aren't introspected. All classes must
         // (re)define these base versions to support overloading with specific
-        // signals
+        // signals.
         debLog(`Before adding signal methods ${cls._fullSymName} has methods:`)
         if (doLog)
             this.logFunctions(methods)
