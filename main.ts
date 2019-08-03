@@ -986,13 +986,34 @@ export class GirModule {
         return def
     }
 
-    private addSignalMethod(methods: FunctionDescription[], name: string, desc: string) {
+    private logFunctionDefs(funcs: string[]) {
+        for (const d in funcs) {
+            console.log(`|        Definition ${d}: '${funcs[d]}'`)
+        }
+        console.log("|    ****")
+    }
+
+    private logFunctions(funcs: FunctionDescription[]) {
+        for (const n in funcs) {
+            const f = funcs[n]
+            console.log(`|    Function ${n} is named "${f[1]}"`)
+            this.logFunctionDefs(f[0])
+        }
+        console.log("****")
+    }
+
+    private addSignalMethod(methods: FunctionDescription[], name: string, desc: string[]) {
         let old = methods.find(e => e[1] === name)
         if (old) {
-            if (!old[0].find(e => e === desc))
-                old[0].push(desc)
+            for (const ln of desc) {
+                if (!old[0].find(e => e === ln)) {
+                    debLog(`Adding "${ln}" to ${name}'s desc "${old[0]}"`)
+                    old[0].push(ln)
+                }
+            }
         } else {
-            methods.push([[desc], name])
+            debLog(`${name}'s desc is "${desc}"`)
+            methods.push([desc, name])
         }
     }
 
@@ -1017,29 +1038,41 @@ export class GirModule {
                     console.warn(`Removing method ${cls._fullSymName}.${m.$.name} due to a clash with a property`)
                 return false
             }
-            return true
+            return m.$.name != null
         })
-        let methods = methodNames.map(f => this.getFunction(f, "    ", "", this))
+        let methods = methodNames.map(f => this.getFunction(f, "    ", "", this)).filter(f => f[1] != null)
+
         // GObject.Object signal methods aren't introspected. All classes must
         // (re)define these base versions to support overloading with specific
         // signals
-        //if (cls._fullSymName === "GObject.Object") {
+        debLog(`Before adding signal methods ${cls._fullSymName} has methods:`)
+        if (doLog)
+            this.logFunctions(methods)
         if (this.isDerivedFromGObject(cls)) {
+            debLog(`Adding signal methods to ${cls._fullSymName}`)
             this.addSignalMethod(methods, "connect",
-                "    connect(sigName: string, callback: Function): number")
+                ["    connect(sigName: string, callback: Function): number",
+                 "    connect<T extends string, V extends function>(sigName: T, callback: V): number"])
             this.addSignalMethod(methods, "connect_after",
-                "    connect_after(sigName: string, callback: Function): number")
+                ["    connect_after(sigName: string, callback: Function): number",
+                 "    connect_after<T extends string, V extends function>(sigName: T, callback: V): number"])
             this.addSignalMethod(methods, "emit",
-                "    emit(sigName: string, ...args: any[]): void")
+                ["    emit(sigName: string, ...args: any[]): void",
+                 "    emit<T extends string>(sigName: T, ...args: any[]): void"])
         }
+        debLog(`After adding signal methods ${cls._fullSymName} has methods:`)
+        if (doLog)
+            this.logFunctions(methods)
+        debLog("****")
         return methods
     }
 
-    private stripParamNames(lines: string[], ignoreTail = false) {
-        let f = lines.join(' ')
+    private stripParamNames(f: string, ignoreTail = false) {
         const g = f
         f = f.replace(this.commentRegExp, "")
         let lb = f.split('(', 2)
+        if (lb.length < 2)
+            console.log(`Bad function definition ${g}`)
         let rb = lb[1].split(')')
         let tail = ignoreTail ? "" :  rb[rb.length - 1]
         let params = rb.slice(0, rb.length - 1).join(')')
@@ -1048,16 +1081,36 @@ export class GirModule {
         return `${lb[0]}(${params})${tail}`
     }
 
+    // This relies on f1[0] and f2[0] containing one definition per line
     private functionsClash(f1: FunctionDescription, f2: FunctionDescription,
             ignoreTail = false) {
         if (f1[1] != f2[1] || !f1) {
             return false
         }
-        const d1 = this.stripParamNames(f1[0], ignoreTail)
-        const d2 = this.stripParamNames(f2[0], ignoreTail)
-        if (d1 !== d2)
-            debLog(`Clash between ${d1} and ${d2}`)
-        return d1 !== d2
+        let match = false
+        let d1 = "undef"
+        let d2 = "undef"
+        try {
+            for (const n1 in f1[0]) {
+                d1 = f1[0][n1]
+                const s1 = this.stripParamNames(d1, ignoreTail)
+                for (const n2 in f2[0]) {
+                    d2 = f2[0][n2]
+                    //console.log(`d2 '${d2}', type ${typeof d2}`)
+                    const s2 = this.stripParamNames(d2, ignoreTail)
+                    if (d1 === d2) {
+                        match = true
+                        break
+                    }
+                }
+                if (match)
+                    break
+            }
+        } catch (ex) {
+            console.log(`Error processing function ${d1} or ${d2}`)
+            throw ex
+        }
+        return !match
     }
 
     // If add is true this adds fn to ownMethodsMap if it isn't already
@@ -1094,9 +1147,17 @@ export class GirModule {
         }
         if (ownRec) {
             for (const defn of ownRec) {
-                if (!this.functionsClash(fn, [[defn], name])) {
-                    debLog(`        ${name} is identical to an existing implementation`)
-                    return
+                try {
+                    if (!this.functionsClash(fn, [[defn], name])) {
+                        debLog(`        ${name} is identical to an existing implementation`)
+                        return
+                    }
+                } catch (ex) {
+                    console.log(`Bad definition in ownRec for ${prefix}${name} of ${ownName}: ${defn}`)
+                    debLog(`Here's the dummy FunctionDescription[]`)
+                    this.logFunctions([[[defn], name]])
+                    debLog(`ownRec is "${ownRec} typeof ${ownRec}`)
+                    throw ex
                 }
             }
             if (!ownMethodsMap.get(name)) {
@@ -1147,10 +1208,9 @@ export class GirModule {
         this.warnMethodPropClash = false
         const ownMethodsMap = new Map<string, string[]>()
         const allMethodsMap = new Map<string, string[]>()
-        doLog = cls._fullSymName == "Gtk.CellAccessible"
         debLog(`>>>> processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
         for (const m of ownMethodsArr) {
-            debLog(`    Adding own method ${prefix}${m[1]}`)
+            debLog(`    Adding own method ${prefix}${m[1]}: ${m[0]}`)
             if (m[1]) {
                 ownMethodsMap.set(m[1], m[0])
                 allMethodsMap.set(m[1], m[0])
@@ -1160,14 +1220,30 @@ export class GirModule {
         debLog("**** Superclass methods")
         this.traverseInheritanceTree(cls, e => {
             debLog(`  Superclass ${e._fullSymName}`)
-            const didLog = doLog
-            for (const m of getMethods(e)) {
-                doLog = doLog && (m[1] === "connect")
+            const methods = getMethods(e)
+            for (const m of methods) {
                 debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-                this.checkOverload(ownMethodsMap, allMethodsMap, m, false,
-                    cls._fullSymName || "", e._fullSymName || "", prefix)
+                try {
+                    this.checkOverload(ownMethodsMap, allMethodsMap, m, false,
+                        cls._fullSymName || "", e._fullSymName || "", prefix)
+                } catch (ex) {
+                    console.log(`Bad method was in superclass ${e._fullSymName} of ${cls._fullSymName}`)
+                    console.log("ownMethodsMap, followed by allMethodsMap:")
+                    for (const mp of [ownMethodsMap, allMethodsMap]) {
+                        console.log("ownMethodsMap")
+                        const keys = Array.from(mp.keys())
+                        const fds: FunctionDescription[] = keys.map(k => [mp.get(k) || [], k])
+                        this.logFunctions(fds)
+                        console.log("******** End of map ********")
+                    }
+                    if (!doLog) {
+                        console.log("Doing it again with logging enabled")
+                        doLog = true
+                        this.processOverloadableMethods(cls, forClass, getMethods, methodType, prefix)
+                    }
+                    throw ex
+                }
                 debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-                doLog = didLog
             }
         })
         // Check whether any methods from implemented interfaces clash and
@@ -1181,14 +1257,16 @@ export class GirModule {
                 debLog(`   Disabling add for interface ${e._fullSymName} implemented by a superclass`)
                 add = false
             }
-            const didLog = doLog
             for (const m of getMethods(e)) {
-                doLog = doLog && (m[1] === "connect")
                 debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-                this.checkOverload(ownMethodsMap, allMethodsMap, m, add,
-                    cls._fullSymName || "", e._fullSymName || "", prefix)
+                try {
+                    this.checkOverload(ownMethodsMap, allMethodsMap, m, add,
+                        cls._fullSymName || "", e._fullSymName || "", prefix)
+                } catch (ex) {
+                    console.log(`Bad method was in interface ${e._fullSymName} of ${cls._fullSymName}`)
+                    throw ex
+                }
                 debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-                doLog = didLog
             }
         }, true)
         // Export the methods
@@ -1199,7 +1277,6 @@ export class GirModule {
         if (def.length)
             def.unshift(`    // ${methodType} methods`)
         debLog(`<<<< processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
-        doLog = false
         return def
     }
 
@@ -1262,9 +1339,14 @@ export class GirModule {
             let mod = cls._module || this
             const funcs = getFunctions(mod, cls)
             for (const desc2 of funcs) {
-                if (this.functionsClash([desc, funcName], desc2)) {
-                    clash = true
-                    break
+                try {
+                    if (this.functionsClash([desc, funcName], desc2)) {
+                        clash = true
+                        break
+                    }
+                } catch (ex) {
+                    console.log(`Bad function definition in statics of ${e._fullSymName}: ${desc2}`)
+                    throw ex
                 }
             }
         });
@@ -1973,5 +2055,10 @@ function main() {
     console.log("Done.")
 }
 
-if (require.main === module)
-    main()
+if (require.main === module) {
+    try {
+        main();
+    } catch (ex) {
+        console.log("There was an exception")
+    }
+}
