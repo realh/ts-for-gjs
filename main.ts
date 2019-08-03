@@ -962,14 +962,10 @@ export class GirModule {
         // by filtering out those names
         const dash = /-/g
         let propNames = new Set<string>()
-        this.traverseInheritanceTree(cls, e => {
-            this.forEachInterfaceAndSelf(e, propSrc => {
-                for (const p of propSrc.property || []) {
-                    if (p.$.name)
-                        propNames.add(p.$.name.replace(dash, '_'))
-                }
-            })
-        })
+        for (const p of cls.property || []) {
+            if (p.$.name)
+                propNames.add(p.$.name.replace(dash, '_'))
+        }
         let methodNames = (cls.method || []).filter(m => {
             if (propNames.has(m.$.name)) {
                 console.warn(`Removing method ${cls._fullSymName}.${m.$.name} due to a clash with a property`)
