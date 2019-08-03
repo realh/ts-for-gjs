@@ -2027,7 +2027,6 @@ if (require.main === module) {
     try {
         main()
     } catch (ex) {
-        console.log(`Exception: ${ex}`)
         console.log(ex.stack)
     }
 }
