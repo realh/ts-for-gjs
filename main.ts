@@ -1109,15 +1109,16 @@ export class GirModule {
     }
 
     // fnMap values are equivalent to the second element of a FunctionDescription.
-    // If an entry in fnMap is changed its name is added to overloads.
+    // If an entry in fnMap is changed its name is added to explicits (set of names
+    // which must be declared).
     // If force is true, every function of f2 is added to fnMap and overloads even
     // if it doesn't already contain a function of the same name.
-    private addOverloadableFunctions(fnMap: FunctionMap, overloads: Set<string>,
+    private addOverloadableFunctions(fnMap: FunctionMap, explicits: Set<string>,
             funcs: FunctionDescription[], force = false) {
         for (const func of funcs) {
             if (!func[1]) continue
             if (this.mergeOverloadableFunctions(fnMap, func) || force) {
-                overloads.add(func[1])
+                explicits.add(func[1])
             }
         }
     }
@@ -1126,25 +1127,25 @@ export class GirModule {
             getMethods: (e: GirClass) => FunctionDescription[]):
             [FunctionMap, Set<string>] {
         const fnMap: FunctionMap = new Map()
-        const overloads = new Set<string>()
+        const explicits = new Set<string>()
         let bottom = true
         this.traverseInheritanceTree(cls, e => {
             const funcs = getMethods(e)
-            this.addOverloadableFunctions(fnMap, overloads, funcs, bottom)
+            this.addOverloadableFunctions(fnMap, explicits, funcs, bottom)
             if (bottom) bottom = false
         })
-        return [fnMap, overloads]
+        return [fnMap, explicits]
     }
 
     // Used for <method> and <virtual-method>
     private processInstanceMethods(cls: GirClass,
             getMethods: (e: GirClass) => FunctionDescription[]):
             [FunctionMap, Set<string>] {
-        const [fnMap, overloads] = this.mapOverloadableMethods(cls, getMethods)
+        const [fnMap, explicits] = this.mapOverloadableMethods(cls, getMethods)
         // Have to implement methods from cls' interfaces
         this.forEachInterface(cls, iface => {
             const funcs = getMethods(iface)
-            this.addOverloadableFunctions(fnMap, overloads, funcs, true)
+            this.addOverloadableFunctions(fnMap, explicits, funcs, true)
         }, false)
         // Check for overloads among all inherited methods
         let bottom = true
@@ -1155,109 +1156,11 @@ export class GirModule {
             }
             this.forEachInterfaceAndSelf(e, iface => {
                 const funcs = getMethods(iface)
-                this.addOverloadableFunctions(fnMap, overloads, funcs, false)
+                this.addOverloadableFunctions(fnMap, explicits, funcs, false)
             })
         })
 
-        return [fnMap, overloads]
-    }
-
-    // This checks whether all definitions from f2 have a match in f1. It
-    // returns true if any of f2 is missing from f1.
-    // If add is true it adds the missing 
-    // It relies on f1[0] and f2[0] containing one definition per line
-    private functionsClash(f1: FunctionDescription, f2: FunctionDescription,
-            ignoreTail = false, add = false) {
-        if (f1[1] != f2[1] || !f1) {
-            return false
-        }
-        let result = false
-        for (const n2 in f2[0]) {
-            const d2 = f2[0][n2]
-            const s2 = this.stripParamNames(d2, ignoreTail)
-            let match = false
-            for (const n1 in f1[0]) {
-                const d1 = f1[0][n1]
-                const s1 = this.stripParamNames(d1, ignoreTail)
-                debLog(`        Comparing '${s1}' with '${s2}'`)
-                if (s1 === s2) {
-                    debLog(`        Match`)
-                    match = true
-                    break
-                }
-            }
-            if (!match) {
-                debLog(`        No match`)
-                result = true
-                if (add) {
-                    f1[0].push(d2)
-                } else {
-                    break
-                }
-            }
-        }
-        if (!result)
-            debLog(`    All matched`)
-        return result
-    }
-
-    // If add is true this adds fn to ownMethodsMap if it isn't already
-    // present; this allows exported classes to satisfy their implemented
-    // interfaces.
-    // If add is false this just adds overloads where necessary
-    private checkOverload(ownMethodsMap: Map<string, string[]>,
-                          allMethodsMap: Map<string, string[]>,
-                          fn: FunctionDescription, add: boolean,
-                          ownName: string, otherName: string,
-                          prefix = "") {
-        const name = fn[1]
-        if (!name) return
-        const didLog = doLog
-        doLog = doLog && name == "connect"
-        debLog(`        Checking whether  ${name} [${fn[0]}] needs overload`)
-        debLog(`        in [${ownMethodsMap.get(name)}]`)
-        let ownRec = ownMethodsMap.get(name)
-        let anyRec = allMethodsMap.get(name)
-        if (!ownRec) {
-            if (anyRec) {
-                debLog(`        ${name} is defined in more than one interface/superclass`)
-                //ownMethodsMap.set(name, anyRec)
-                ownRec = anyRec
-            } else {
-                if (add) {
-                    debLog(`        ${fn[0]} must be implemented`)
-                    ownMethodsMap.set(name, fn[0])
-                } else {
-                    debLog(`        Remembering ${fn[0]}`)
-                }
-                allMethodsMap.set(name, fn[0])
-                doLog = didLog
-                return
-            }
-        } else {
-            debLog(`        ${name} is already implemented as [${ownRec}]`)
-        }
-        if (ownRec) {
-            if (!this.functionsClash([ownRec, name], fn, false, true)) {
-                debLog(`        ${name} was already covered`)
-                doLog = didLog
-                return
-            }
-            if (!ownMethodsMap.get(name)) {
-                debLog(`        Adding anyRec [${ownRec}]`)
-                ownMethodsMap.set(name, ownRec)
-            } else {
-                debLog(`        ownRec updated to [${ownRec}]`)
-            }
-            //console.warn(`Method ${prefix}${name} in ${ownName} clashes with one inherited from ${otherName}`)
-            const gen = `    ${prefix}${name}<T, V>(arg?: T): V`
-            if (ownRec[ownRec.length - 1] !== gen) {
-                debLog(`        Adding generic ${gen}`)
-                ownRec.push(gen)
-            }
-        }
-        doLog = didLog
-        return
+        return [fnMap, explicits]
     }
 
     // Some classes implement interfaces which are also implemented by a superclass
@@ -1284,71 +1187,6 @@ export class GirModule {
         })
         return rpt
     }
-
-    private processOverloadableMethods(cls: GirClass, forClass: boolean,
-            getMethods: (e: GirClass) => FunctionDescription[],
-            methodType: string, prefix = ""): string[] {
-        this.warnMethodPropClash = true
-        const ownMethodsArr = getMethods(cls)
-        this.warnMethodPropClash = false
-        const ownMethodsMap = new Map<string, string[]>()
-        const allMethodsMap = new Map<string, string[]>()
-        doLog = cls._fullSymName === "Gio.TcpConnection"
-        debLog(`>>>> processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
-        for (const m of ownMethodsArr) {
-            debLog(`    Adding own method ${prefix}${m[1]}: ${m[0]}`)
-            if (m[1]) {
-                ownMethodsMap.set(m[1], m[0])
-                allMethodsMap.set(m[1], m[0])
-            }
-        }
-        // Check for clashes in superclasses
-        debLog("**** Superclass methods")
-        this.traverseInheritanceTree(cls, e => {
-            debLog(`  Superclass ${e._fullSymName}`)
-            const methods = getMethods(e)
-            for (const m of methods) {
-                debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-                this.checkOverload(ownMethodsMap, allMethodsMap, m, false,
-                    cls._fullSymName || "", e._fullSymName || "", prefix)
-                debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-            }
-        })
-        // Check whether any methods from implemented interfaces clash and
-        // simultaneously add declarations to satisfy implemented interfaces
-        // if this is a class definition.
-        debLog("**** Interface methods")
-        this.forEachInterface(cls, e => {
-            debLog(`  Interface ${e._fullSymName}`)
-            let add = forClass
-            if (add && this.interfaceIsDuplicate(cls, e)) {
-                debLog(`   Disabling add for interface ${e._fullSymName} implemented by a superclass`)
-                add = false
-            }
-            for (const m of getMethods(e)) {
-                debLog(`    >>>> Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-                this.checkOverload(ownMethodsMap, allMethodsMap, m, add,
-                    cls._fullSymName || "", e._fullSymName || "", prefix)
-                debLog(`    <<<< Checking whether ${e._fullSymName}${prefix}.${m[1]} clashes`)
-            }
-        }, true)
-        // Export the methods
-        let def: string[] = []
-        for (const m of Array.from(ownMethodsMap.values())) {
-            def = def.concat(m)
-        }
-        if (def.length)
-            def.unshift(`    // ${methodType} methods`)
-        debLog(`<<<< processOverloadableMethods(${cls._fullSymName}, forClass = ${forClass})`)
-        doLog = false
-        return def
-    }
-
-    //private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
-    //    const result = this.processOverloadableMethods(cls, forClass,
-    //        e => this.getInstanceMethods(e), "Instance", "")
-    //    return result
-    //}
 
     private processVirtualMethods(cls: GirClass, forClass: boolean): string[] {
         return this.processOverloadableMethods(cls, forClass, e => {
