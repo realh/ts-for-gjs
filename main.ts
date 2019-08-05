@@ -179,6 +179,7 @@ interface GirRepository {
 }
 
 type FunctionDescription = [string[], string | null]
+type FunctionMap = Map<string, string[]>
 
 export class GirModule {
     name: string | null = null
@@ -834,7 +835,7 @@ export class GirModule {
         if (!details)
             return;
         callback(e)
-        const {name, qualifiedName, parentName, qualifiedParentName} = details
+        const {parentName, qualifiedParentName} = details
         if (parentName && qualifiedParentName) {
             let parentPtr = this.symTable[qualifiedParentName]
             if (!parentPtr && parentName == "Object") {
@@ -1046,14 +1047,11 @@ export class GirModule {
         // signals.
         if (this.isDerivedFromGObject(cls)) {
             this.addSignalMethod(methods, "connect",
-                ["    connect(sigName: string, callback: Function): number",
-                 "    connect<T extends string, V extends Function>(sigName: T, callback: V): number"])
+                ["    connect(sigName: string, callback: Function): number"])
             this.addSignalMethod(methods, "connect_after",
-                ["    connect_after(sigName: string, callback: Function): number",
-                 "    connect_after<T extends string, V extends Function>(sigName: T, callback: V): number"])
+                ["    connect_after(sigName: string, callback: Function): number"])
             this.addSignalMethod(methods, "emit",
-                ["    emit(sigName: string, ...args: any[]): void",
-                 "    emit<T extends string>(sigName: T, ...args: any[]): void"])
+                ["    emit(sigName: string, ...args: any[]): void"])
         }
         return methods
     }
@@ -1070,6 +1068,98 @@ export class GirModule {
         params = params.replace(this.paramRegExp, ':')
         params = params.replace(this.optParamRegExp, '?:')
         return `${lb[0]}(${params})${tail}`
+    }
+
+    // Returns true if the function definitions in f1 and f2 have equivalent
+    // signatures
+    private functionSignaturesMatch(f1: string, f2: string) {
+        return this.stripParamNames(f1) == this.stripParamNames(f2)
+    }
+
+    // See comment for addOverloadableFunctions.
+    // Returns true if (a definition from) func is added to map
+    private mergeOverloadableFunctions(map: FunctionMap,
+            func: FunctionDescription, force = true) {
+        if (!func[1])
+            return false
+        let defs = map.get(func[1])
+        if (!defs) {
+            if (force) {
+                map.set(func[1], func[0])
+                return true
+            } else {
+                return false
+            }
+        }
+        let result = false
+        for (const newDef of func[0]) {
+            let match = false
+            for (const oldDef of func[0]) {
+                if (this.functionSignaturesMatch(newDef, oldDef)) {
+                    match = true
+                    break
+                }
+            }
+            if (!match) {
+                defs.push(newDef)
+                result = true
+            }
+        }
+        return result
+    }
+
+    // fnMap values are equivalent to the second element of a FunctionDescription.
+    // If an entry in fnMap is changed its name is added to overloads.
+    // If force is true, every function of f2 is added to fnMap and overloads even
+    // if it doesn't already contain a function of the same name.
+    private addOverloadableFunctions(fnMap: FunctionMap, overloads: Set<string>,
+            funcs: FunctionDescription[], force = false) {
+        for (const func of funcs) {
+            if (!func[1]) continue
+            if (this.mergeOverloadableFunctions(fnMap, func) || force) {
+                overloads.add(func[1])
+            }
+        }
+    }
+
+    private mapOverloadableMethods(cls: GirClass,
+            getMethods: (e: GirClass) => FunctionDescription[]):
+            [FunctionMap, Set<string>] {
+        const fnMap: FunctionMap = new Map()
+        const overloads = new Set<string>()
+        let bottom = true
+        this.traverseInheritanceTree(cls, e => {
+            const funcs = getMethods(e)
+            this.addOverloadableFunctions(fnMap, overloads, funcs, bottom)
+            if (bottom) bottom = false
+        })
+        return [fnMap, overloads]
+    }
+
+    // Used for <method> and <virtual-method>
+    private processInstanceMethods(cls: GirClass,
+            getMethods: (e: GirClass) => FunctionDescription[]):
+            [FunctionMap, Set<string>] {
+        const [fnMap, overloads] = this.mapOverloadableMethods(cls, getMethods)
+        // Have to implement methods from cls' interfaces
+        this.forEachInterface(cls, iface => {
+            const funcs = getMethods(iface)
+            this.addOverloadableFunctions(fnMap, overloads, funcs, true)
+        }, false)
+        // Check for overloads among all inherited methods
+        let bottom = true
+        this.traverseInheritanceTree(cls, e => {
+            if (bottom) {
+                bottom = false
+                return
+            }
+            this.forEachInterfaceAndSelf(e, iface => {
+                const funcs = getMethods(iface)
+                this.addOverloadableFunctions(fnMap, overloads, funcs, false)
+            })
+        })
+
+        return [fnMap, overloads]
     }
 
     // This checks whether all definitions from f2 have a match in f1. It
@@ -1254,11 +1344,11 @@ export class GirModule {
         return def
     }
 
-    private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
-        const result = this.processOverloadableMethods(cls, forClass,
-            e => this.getInstanceMethods(e), "Instance", "")
-        return result
-    }
+    //private processInstanceMethods(cls: GirClass, forClass: boolean): string[] {
+    //    const result = this.processOverloadableMethods(cls, forClass,
+    //        e => this.getInstanceMethods(e), "Instance", "")
+    //    return result
+    //}
 
     private processVirtualMethods(cls: GirClass, forClass: boolean): string[] {
         return this.processOverloadableMethods(cls, forClass, e => {
