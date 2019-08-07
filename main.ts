@@ -1042,10 +1042,8 @@ export class GirModule {
         })
         let methods = methodNames.map(f => this.getFunction(f, "    ", "", this)).filter(f => f[1] != null)
 
-        // GObject.Object signal methods aren't introspected. All classes must
-        // (re)define these base versions to support overloading with specific
-        // signals.
-        if (this.isDerivedFromGObject(cls)) {
+        // GObject.Object signal methods aren't introspected.
+        if (cls._fullSymName === "GObject.Object") {
             this.addSignalMethod(methods, "connect",
                 ["    connect(sigName: string, callback: Function): number"])
             this.addSignalMethod(methods, "connect_after",
@@ -1055,6 +1053,10 @@ export class GirModule {
         }
         return methods
     }
+
+    private commentRegExp = /\/\*.*\*\//g
+    private paramRegExp = /[0-9a-zA-Z_]*:/g
+    private optParamRegExp = /[0-9a-zA-Z_]*\?:/g
 
     private stripParamNames(f: string, ignoreTail = false) {
         const g = f
@@ -1138,7 +1140,7 @@ export class GirModule {
     }
 
     // Used for <method> and <virtual-method>
-    private processInstanceMethods(cls: GirClass,
+    private processOverloadableMethods(cls: GirClass,
             getMethods: (e: GirClass) => FunctionDescription[]):
             [FunctionMap, Set<string>] {
         const [fnMap, explicits] = this.mapOverloadableMethods(cls, getMethods)
@@ -1161,6 +1163,109 @@ export class GirModule {
         })
 
         return [fnMap, explicits]
+    }
+
+    private exportOverloadableMethods(fnMap: FunctionMap, explicits: Set<string>) {
+        let def: string[] = []
+        for (const k of explicits.keys()) {
+            const f = fnMap.get(k)
+            if (f)
+                def.push(...f[0])
+        }
+        return def
+    }
+
+    private processVirtualMethods(cls: GirClass): string[] {
+        const [fnMap, explicits] = this.processOverloadableMethods(cls, e => {
+            let methods = (e["virtual-method"] || []).map(f => {
+                const desc = this.getFunction(f, "    ", "vfunc_", this)
+                if (desc[0].length)
+                    desc[0][0] = desc[0][0].replace("(", "?(")
+                return desc
+            })
+            methods = methods.filter(f => f[1] != null)
+            return methods
+        })
+        return this.exportOverloadableMethods(fnMap, explicits)
+    }
+
+    // These have to be processed together, because signals add overloads
+    // for connect() etc (including property notifications) and prop names may
+    // clash with method names, meaning one or the other has to be removed
+    private processInstanceMethodsSignalsProperties(cls: GirClass): string[] {
+        const [fnMap, explicits] = this.processOverloadableMethods(cls, e => {
+            // This already filters out methods with same name as superclass
+            // properties
+            return this.getInstanceMethods(e)
+        })
+        // Add specific signal methods
+        const signals = cls["glib:signal"]
+        if (signals && signals.length) {
+            explicits.add("connect")
+            explicits.add("connect_after")
+            explicits.add("emit")
+            for (let s of signals) {
+                const [retType, outArrayLengthIndex] = this.getReturnType(s);
+                let [params] = this.getParameters(s.parameters, outArrayLengthIndex);
+                if (params.length > 0)
+                    params = ", " + params
+                const callback = `(obj: ${cls.$.name}${params}) => ${retType}`
+                const signature = `(sigName: "${s.$.name}", callback: ${callback}): number`
+                this.mergeOverloadableFunctions(fnMap,
+                    [[`    connect${signature}`], "connect"], true)
+                this.mergeOverloadableFunctions(fnMap,
+                    [[`    connect_after${signature}`], "connect_after"], true)
+                this.mergeOverloadableFunctions(fnMap,
+                    [[`    emit(sigName: ${s.$.name}${params}): void`], "emit"], true)
+            }
+        }
+        let def: string[] = []
+        if (cls.property) {
+            // Although we've removed methods with the same name as an inherited
+            // property we still need to filter out properties with the same
+            // name as an inherited method.
+            const dash = /-/g
+            const props = cls.property.filter(p => {
+                if (!p.$.name)
+                    return false
+                const xName = p.$.name.replace(dash, '_')
+                if (fnMap.has(xName)) {
+                    console.warn(`Hiding property ${cls._fullSymName}.${xName} ` +
+                        "due to a clash with an inherited method")
+                    return false
+                }
+                return true
+            })
+            if (props.length) {
+                let prefix = "GObject."
+                if (this.name == "GObject") prefix = ""
+                def.push("    // Properties")
+                for (let p of props) {
+                    let [desc, name, origName] = this.getProperty(p, false)
+                    def = def.concat(desc)
+                    // Each property also has a signal
+                    if (origName) {
+                        const sigName = `sigName: "notify::${origName}"`
+                        const params = `pspec: ${prefix}ParamSpec`
+                        const callback = `(${params}) => void`
+                        const signature = `(${sigName}, obj: ${cls.$.name}, ` +
+                            `callback: ${callback}): number`
+                        this.mergeOverloadableFunctions(fnMap,
+                            [[`    connect${signature}`], "connect"], true)
+                        this.mergeOverloadableFunctions(fnMap,
+                            [[`    connect_after${signature}`], "connect_after"], true)
+                        this.mergeOverloadableFunctions(fnMap,
+                            [[`    emit(sigName: ${sigName}, ${params}): void`], "emit"], true)
+                    }
+                }
+            }
+        }
+        const mDef = this.exportOverloadableMethods(fnMap, explicits)
+        if (mDef.length) {
+            def.push(`    // Instance and signal methods`)
+            def = def.concat(mDef)
+        }
+        return def
     }
 
     // Some classes implement interfaces which are also implemented by a superclass
@@ -1186,72 +1291,6 @@ export class GirModule {
             }, true)
         })
         return rpt
-    }
-
-    private processVirtualMethods(cls: GirClass, forClass: boolean): string[] {
-        return this.processOverloadableMethods(cls, forClass, e => {
-            let methods = (e["virtual-method"] || []).map(f => {
-                const desc = this.getFunction(f, "    ", "vfunc_", this)
-                if (desc[0].length)
-                    desc[0][0] = desc[0][0].replace("(", "?(")
-                return desc
-            })
-            methods = methods.filter(f => f[1] != null)
-            return methods
-        }, "Virtual", "vfunc_")
-    }
-
-    private processSignals(cls: GirClass): string[] {
-        let def: string[] = []
-        let signals = cls["glib:signal"]
-        if (signals && signals.length) {
-            def.push(`    // Signals of ${cls._fullSymName}`)
-            for (let s of signals)
-                def = def.concat(this.getSignalFuncs(s, cls.$.name))
-            // If this class/interface has signals we need to redeclare
-            // the generic signal functions
-            if (cls._fullSymName !== "GObject.Object") {
-                def = def.concat(this.getSignalFuncs(cls.$.name))
-            }
-        }
-        return def
-    }
-
-    private commentRegExp = /\/\*.*\*\//g
-    private paramRegExp = /[0-9a-zA-Z_]*:/g
-    private optParamRegExp = /[0-9a-zA-Z_]*\?:/g
-
-    // If a method has the same name as one in a superclass, but with
-    // incompatible parameters or return types, we need to provide a generic
-    // form. For some reason a signature of <T, V>(arg?: T): V covers all cases.
-    // It's better for return type to be a generic too, because if this
-    // overload is abused it results in V being "unknown", and should cause a
-    // compilation error. The error will be in the wrong place, but it's better
-    // than nothing.
-    // See issue #12.
-    private getOverloads(e: GirClass, desc: string[], funcName: string,
-            getFunctions: (mod: GirModule, cls: GirClass) => FunctionDescription[],
-            skipBottom = true):
-            string[]
-    {
-        let clash = false
-        this.traverseInheritanceTree(e, (cls: GirClass) => {
-            if (clash) return;
-            if (skipBottom) {
-                skipBottom = false
-                return
-            }
-            let mod = cls._module || this
-            const funcs = getFunctions(mod, cls)
-            for (const desc2 of funcs) {
-                if (this.functionsClash([desc, funcName], desc2)) {
-                    clash = true
-                    break
-                }
-            }
-        });
-        const stat = (clash && desc.indexOf("    static") == 0) ? "static " : ""
-        return clash ? [`    ${stat}${funcName}<T, V>(arg?: T): V`] : []
     }
 
     private getStaticConstructors(e: GirClass,
@@ -1375,7 +1414,7 @@ export class GirModule {
         def = def.concat(this.processProperties(e, localNames))
         // See similar commented line in exportClassInternal
         //def = def.concat(this.processFields(e, localNames))
-        def = def.concat(this.processInstanceMethods(e, false))
+        def = def.concat(this.processOverloadableMethods(e, false))
         def = def.concat(this.processVirtualMethods(e, false))
         // Overloading signal functions doesn't seem to work in interfaces
         def = def.concat(this.processSignals(e))
@@ -1432,7 +1471,7 @@ export class GirModule {
         // Can't export fields for GObjects because names would clash
         if (record)
             def = def.concat(this.processFields(e, localNames))
-        def = def.concat(this.processInstanceMethods(e, true))
+        def = def.concat(this.processOverloadableMethods(e, true))
         def = def.concat(this.processVirtualMethods(e, true))
         def = def.concat(this.processSignals(e))
 
