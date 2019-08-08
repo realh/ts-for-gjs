@@ -1180,16 +1180,27 @@ export class GirModule {
             // property we still need to filter out properties with the same
             // name as an inherited method.
             const dash = /-/g
-            const props = cls.property.filter(p => {
-                if (!p.$.name)
-                    return false
-                const xName = p.$.name.replace(dash, '_')
-                if (fnMap.has(xName)) {
-                    console.warn(`Hiding property ${cls._fullSymName}.${xName} ` +
-                        "due to a clash with an inherited method")
-                    return false
+            let props: GirVariable[] = []
+            let self = true
+            this.forEachInterfaceAndSelf(cls, e => {
+                if (!e.property) {
+                    self = false
+                    return
                 }
-                return true
+                props = props.concat(e.property.filter(p => {
+                    if (!p.$.name)
+                        return false
+                    const xName = p.$.name.replace(dash, '_')
+                    if (fnMap.has(xName)) {
+                        if (self) {
+                            console.warn(`Hiding property ${cls._fullSymName}.${xName} ` +
+                                "due to a clash with an inherited method")
+                        }
+                        return false
+                    }
+                    return true
+                }))
+                self = false
             })
             if (props.length) {
                 let prefix = "GObject."
