@@ -1420,7 +1420,7 @@ export class GirModule {
             stc.push(`    _init(config?: ${name}_ConstructProps): void`)
         } else if (e.prerequisite) {
             // Interfaces can't be instantiated
-            stc = def.concat("    protected constructor(a?: any)")
+            stc = stc.concat("    protected constructor(a?: any)")
         } else {
             stc = this.processStaticFunctions(e, cls => [this.getStaticNew(cls)])
         }
