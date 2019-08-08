@@ -304,11 +304,9 @@ export class GirModule {
         for (let c of objs) {
             c._module = this
             c._fullSymName = `${this.name}.${c.$.name}`
-            doLog = c._fullSymName === "GObject.Object"
             debLog(`>>>> annotating constructors of ${c._fullSymName}`)
             annotateFunctions(c, <GirFunction[]>c.constructor || [])
             debLog(`<<<< annotating constructors of ${c._fullSymName}`)
-            doLog = false
             annotateFunctions(c, c.function || [])
             annotateFunctions(c, c.method || [])
             annotateFunctions(c, c["virtual-method"] || [])
@@ -1459,11 +1457,9 @@ export class GirModule {
             // Interfaces can't be instantiated
             stc = stc.concat("    protected constructor(a?: any)")
         } else {
-            doLog = true
             debLog(`>>>> Processing static constructors (new) for a non-GObject`)
             stc = this.processStaticFunctions(e, cls => [this.getStaticNew(cls)])
             debLog(`<<<< Processing static constructors (new) for a non-GObject`)
-            doLog = false
         }
         if (stc.length) {
             def.push("    // Constructor")
@@ -1475,7 +1471,6 @@ export class GirModule {
 
         // Static methods, <constructor> and <function>
         stc = []
-        doLog = true
         debLog(`>>>> Processing pseudo-constructors of ${e._fullSymName}`)
         stc = stc.concat(this.processStaticFunctions(e, cls => {
             debLog(`    >>>> Component ${cls._fullSymName}`)
