@@ -263,13 +263,23 @@ export class GirModule {
                 }
         }
         let annotateFunctions = (obj: GirClass|null, funcs: GirFunction[]) => {
-            if (funcs)
+            if (funcs) {
+                debLog(`Annotating ${funcs.length} funcs`)
                 for (let f of funcs) {
+                    if (!f || !f.$) {
+                        debLog(`    Skipping func with no $`)
+                        continue
+                    }
                     let nsName = obj ? obj._fullSymName : this.name
                     f._fullSymName = `${nsName}.${f.$.name}`
+                    f._module = this
+                    debLog(`    ${f._fullSymName} is in module ${f._module.name}`)
                     annotateFunctionArguments(f)
                     annotateFunctionReturn(f)
                 }
+            } else {
+                debLog("No functions")
+            }
         }
         let annotateVariables = (obj: GirClass|null, vars) => {
             if (vars)
@@ -294,6 +304,11 @@ export class GirModule {
         for (let c of objs) {
             c._module = this
             c._fullSymName = `${this.name}.${c.$.name}`
+            doLog = c._fullSymName === "GObject.Object"
+            debLog(`>>>> annotating constructors of ${c._fullSymName}`)
+            annotateFunctions(c, <GirFunction[]>c.constructor || [])
+            debLog(`<<<< annotating constructors of ${c._fullSymName}`)
+            doLog = false
             annotateFunctions(c, c.function || [])
             annotateFunctions(c, c.method || [])
             annotateFunctions(c, c["virtual-method"] || [])
@@ -453,6 +468,7 @@ export class GirModule {
         }
 
         let fullTypeName: string | null = type.$.name
+        debLog(`            fullTypeName from type.$ is ${fullTypeName}`)
 
         let fullTypeMap = {
             'GObject.Value': 'any',
@@ -469,6 +485,8 @@ export class GirModule {
         if (fullTypeName && fullTypeName.indexOf(".") < 0) {
             let mod: GirModule = this
             if (e._module) mod = e._module
+            debLog(`            Qualifying fullTypeName with ${mod.name} ` +
+                `(this ${this.name}, e._module ${e._module ? e._module.name : e._module})`)
             fullTypeName = `${mod.name}.${type.$.name}`
         }
 
@@ -499,7 +517,7 @@ export class GirModule {
         return defaultVal
     }
 
-    private getReturnType(e, targetMod?: GirModule) {
+    private getReturnType(e: GirFunction, targetMod?: GirModule) {
         let returnType
 
         let returnVal = e["return-value"] ? e["return-value"][0] : undefined
@@ -511,7 +529,8 @@ export class GirModule {
             returnType = "void"
         debLog(`            getReturnType: returnType: ${returnType}`)
 
-        let outArrayLengthIndex = returnVal && returnVal.array && returnVal.array[0].$.length
+        let outArrayLengthIndex = returnVal && returnVal.array && returnVal.array[0].$ &&
+                returnVal.array[0].$.length
             ? Number(returnVal.array[0].$.length)
             : -1
 
@@ -699,7 +718,7 @@ export class GirModule {
     }
 
     private getFunction(e: GirFunction, prefix: string, funcNamePrefix: string | null = null,
-                        targetMod?: GirModule): FunctionDescription {
+            targetMod?: GirModule, overrideReturnType?: string): FunctionDescription {
         if (!e || !e.$ || !this.girBool(e.$.introspectable, true) || e.$["shadowed-by"])
             return [[], null]
 
@@ -739,7 +758,9 @@ export class GirModule {
             return [[`${prefix}${funcNamePrefix}${patch[patch.length - 1]}`], name]
 
         let retTypeIsVoid = retType == 'void'
-        if (outParams.length + (retTypeIsVoid ? 0 : 1) > 1) {
+        if (overrideReturnType) {
+            retType = overrideReturnType
+        } else if (outParams.length + (retTypeIsVoid ? 0 : 1) > 1) {
             if (!retTypeIsVoid) {
                 outParams.unshift(`/* returnType */ ${retType}`)
             }
@@ -755,35 +776,14 @@ export class GirModule {
     private getConstructorFunction(name: string, e: GirFunction, prefix: string,
             funcNamePrefix: string | null = null, targetMod?: GirModule):
             FunctionDescription {
+        if (!e.$) {
+            debLog("    getConstructorFunction ignoring bogus (JS runtime) constructor")
+            return [[], null]
+        }
         debLog("    getConstructorFunction calling getFunction")
-        let [desc, funcName] = this.getFunction(e, prefix, funcNamePrefix, targetMod)
-
+        let [desc, funcName] = this.getFunction(e, prefix, funcNamePrefix, targetMod, name)
         if (!funcName)
             return [[], null]
-
-        let [retType] = this.getReturnType(e, targetMod)
-        if (retType.split(' ')[0] != name) {
-            // console.warn(`Constructor returns ${retType} should return ${name}`)
-
-            // Force constructors to return the type of the class they are actually
-            // constructing. In a lot of cases the GI data says they return a base
-            // class instead; I'm not sure why.
-            e["return-value"] = [
-                {
-                    '$': {
-                        // nullable
-                    },
-                    'type': [ { '$': {
-                                name: name
-                            } } as GirType
-                    ]
-                } as GirVariable
-            ]
-
-            debLog("    getConstructorFunction calling getFunction again to fix return type")
-            desc = this.getFunction(e, prefix, null, targetMod)[0]
-        }
-
         return [desc, funcName]
     }
 
