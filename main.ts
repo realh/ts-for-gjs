@@ -466,10 +466,20 @@ export class GirModule {
         }
 
         let fullTypeName: string | null = type.$.name
+        doLog = fullTypeName.indexOf("VaClosureMarshal") >= 0
+        // Fully qualify our type name if need be
+        if (fullTypeName && fullTypeName.indexOf(".") < 0) {
+            let mod: GirModule = this
+            if (e._module) mod = e._module
+            debLog(`            Qualifying fullTypeName with ${mod.name} ` +
+                `(this ${this.name}, e._module ${e._module ? e._module.name : e._module})`)
+            fullTypeName = `${mod.name}.${type.$.name}`
+        }
         debLog(`            fullTypeName from type.$ is ${fullTypeName}`)
 
         let fullTypeMap = {
             'GObject.Value': 'any',
+            'GObject.VaClosureMarshal': 'Function',
             'GObject.Closure': 'Function',
             'GLib.ByteArray': 'Gjs.byteArray.ByteArray',
             'GLib.Bytes': 'Gjs.byteArray.ByteArray'
@@ -479,18 +489,10 @@ export class GirModule {
             return fullTypeMap[fullTypeName]
         }
         
-        // Fully qualify our type name if need be
-        if (fullTypeName && fullTypeName.indexOf(".") < 0) {
-            let mod: GirModule = this
-            if (e._module) mod = e._module
-            debLog(`            Qualifying fullTypeName with ${mod.name} ` +
-                `(this ${this.name}, e._module ${e._module ? e._module.name : e._module})`)
-            fullTypeName = `${mod.name}.${type.$.name}`
-        }
+        doLog = false
 
         if (!fullTypeName || this.symTable[fullTypeName] == null) {
             console.warn(`Could not find type ${fullTypeName} for ${e.$.name}`)
-            throw Error(`Could not find type ${fullTypeName} for ${e.$.name}`)
             return "any" + arr
         }
 
