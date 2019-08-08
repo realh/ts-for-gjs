@@ -466,7 +466,6 @@ export class GirModule {
         }
 
         let fullTypeName: string | null = type.$.name
-        doLog = fullTypeName.indexOf("VaClosureMarshal") >= 0
         // Fully qualify our type name if need be
         if (fullTypeName && fullTypeName.indexOf(".") < 0) {
             let mod: GirModule = this
@@ -488,8 +487,6 @@ export class GirModule {
         if (fullTypeName && fullTypeMap[fullTypeName]) {
             return fullTypeMap[fullTypeName]
         }
-        
-        doLog = false
 
         if (!fullTypeName || this.symTable[fullTypeName] == null) {
             console.warn(`Could not find type ${fullTypeName} for ${e.$.name}`)
