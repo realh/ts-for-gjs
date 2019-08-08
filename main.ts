@@ -644,28 +644,22 @@ export class GirModule {
     private getProperty(v: GirVariable, construct: boolean = false,
             optional = true): [string[], string|null, string|null] {
         if (!construct && this.girBool(v.$["construct-only"]) &&
-                !this.girBool(v.$.readable)) {
-            debLog(`        Rejecting ${v.$.name}: construct-only`)
+                !this.girBool(v.$.readable))
             return [[], null, null]
-        }
         //if (!this.girBool(v.$.writable) && construct) {
         //    debLog(`        Rejecting ${v.$.name}: readonly, construct`)
         //    return [[], null, null]
         //}
-        if (this.girBool(v.$.private)) {
-            debLog(`        Rejecting ${v.$.name}: private`)
+        if (this.girBool(v.$.private))
             return [[], null, null]
-        }
 
         let propPrefix = (!this.girBool(v.$.writable) ||
             this.girBool(v.$["construct-only"])) ? 'readonly ' : ''
         let [propDesc,propName] = this.getVariable(v, construct && optional, true)
 
         if (!propName) {
-            debLog(`        Rejecting ${v.$.name}: null propName`)
             return [[], null, null]
         }
-        debLog(`        Accepting ${v.$.name}: (${propName}): [${propDesc}]`)
 
         return [[`    ${propPrefix}${propDesc}`], propName, v.$.name || null]
     }
@@ -1189,48 +1183,39 @@ export class GirModule {
             }
         }
         let def: string[] = []
-        doLog = cls._fullSymName == "Gtk.FileChooserDialog"
-        debLog(`>>>> Properties for ${cls._fullSymName}`)
-            // Although we've removed methods with the same name as an inherited
-            // property we still need to filter out properties with the same
-            // name as an inherited method.
-            const dash = /-/g
-            // The value indicates whether the property belongs to
-            // cls (1 if cls only, 2 if also iface) or an interface (0)
-            const propsMap: Map<string, number> = new Map()
-            let props: GirVariable[] = []
-            let self = true
-            this.forEachInterfaceAndSelf(cls, e => {
-            debLog(`    >>>> for component ${e._fullSymName}`)
+        // Although we've removed methods with the same name as an inherited
+        // property we still need to filter out properties with the same
+        // name as an inherited method.
+        const dash = /-/g
+        // The value indicates whether the property belongs to
+        // cls (1 if cls only, 2 if also iface) or an interface (0)
+        const propsMap: Map<string, number> = new Map()
+        let props: GirVariable[] = []
+        let self = true
+        this.forEachInterfaceAndSelf(cls, e => {
             props = props.concat((e.property || []).filter(p => {
                 if (!p.$.name)
                     return false
                 const xName = p.$.name.replace(dash, '_')
                 const mapped = propsMap.get(p.$.name)
                 if (fnMap.has(xName)) {
-                    debLog(`        Hiding property ${cls._fullSymName}.${xName} ` +
-                        "due to a clash with an inherited method")
                     if (self) {
                         console.warn(`Hiding property ${cls._fullSymName}.${xName} ` +
                             "due to a clash with an inherited method")
                     }
                     return false
                 } else if (mapped) {
-                    debLog(`        Prop "${p.$.name}" already declared`)
                     if (mapped === 1) {
                         propsMap.set(p.$.name, 2)
                     }
                     return false
                 } else {
-                    debLog(`        Prop "${p.$.name}" is new`)
                     propsMap.set(p.$.name, self ? 1 : 0)
                     return true
                 }
             }))
             self = false
-            debLog(`    <<<< for component ${cls._fullSymName}`)
         })
-        debLog("    **** Adding property definitions")
         if (props.length) {
             let prefix = "GObject."
             if (this.name == "GObject") prefix = ""
@@ -1241,7 +1226,6 @@ export class GirModule {
                 // flag from propsMap to force them to be included
                 let [desc, name, origName] = this.getProperty(p,
                     propsMap.get(p.$.name || "") === 2, false)
-                debLog(`        name ${name} origName ${origName}: [${desc}]`)
                 def = def.concat(desc)
                 // Each property also has a signal
                 if (origName) {
@@ -1259,8 +1243,6 @@ export class GirModule {
                 }
             }
         }
-        debLog(`<<<< Properties for ${cls._fullSymName}`)
-        doLog = false
         const mDef = this.exportOverloadableMethods(fnMap, explicits)
         if (mDef.length) {
             def.push(`    // Instance and signal methods`)
