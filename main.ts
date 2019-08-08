@@ -636,7 +636,7 @@ export class GirModule {
         let typeName = this.typeLookup(v)
         let nameSuffix = optional ? "?" : ""
 
-        return [[`${name}${nameSuffix}:${typeName}`], name]
+        return [[`${name}${nameSuffix}: ${typeName}`], name]
     }
 
     private getProperty(v: GirVariable, construct: boolean = false): [string[], string|null, string|null] {
