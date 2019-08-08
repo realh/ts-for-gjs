@@ -625,7 +625,7 @@ export class GirModule {
     }
 
     private getVariable(v: GirVariable, optional: boolean = false, 
-                        allowQuotes: boolean = false): FunctionDescription {
+        allowQuotes: boolean = false): FunctionDescription {
         if (!v.$.name)
             return [[], null]
         if (!v || !v.$ || !this.girBool(v.$.introspectable, true) ||
@@ -640,18 +640,29 @@ export class GirModule {
     }
 
     private getProperty(v: GirVariable, construct: boolean = false): [string[], string|null, string|null] {
-        if (this.girBool(v.$["construct-only"]) && !construct)
+        if (!construct && this.girBool(v.$["construct-only"]) &&
+                !this.girBool(v.$.readable)) {
+            debLog(`        Rejecting ${v.$.name}: construct-only`)
             return [[], null, null]
-        if (!this.girBool(v.$.writable) && construct)
+        }
+        //if (!this.girBool(v.$.writable) && construct) {
+        //    debLog(`        Rejecting ${v.$.name}: readonly, construct`)
+        //    return [[], null, null]
+        //}
+        if (this.girBool(v.$.private)) {
+            debLog(`        Rejecting ${v.$.name}: private`)
             return [[], null, null]
-        if (this.girBool(v.$.private))
-            return [[], null, null]
+        }
 
-        let propPrefix = this.girBool(v.$.writable) ? '' : 'readonly '
+        let propPrefix = (!this.girBool(v.$.writable) ||
+            this.girBool(v.$["construct-only"])) ? 'readonly ' : ''
         let [propDesc,propName] = this.getVariable(v, construct, true)
 
-        if (!propName)
+        if (!propName) {
+            debLog(`        Rejecting ${v.$.name}: null propName`)
             return [[], null, null]
+        }
+        debLog(`        Accepting ${v.$.name}: (${propName}): [${propDesc}]`)
 
         return [[`    ${propPrefix}${propDesc}`], propName, v.$.name || null]
     }
@@ -1175,39 +1186,56 @@ export class GirModule {
             }
         }
         let def: string[] = []
+        doLog = cls._fullSymName == "Gio.SimpleAction"
+        debLog(`>>>> Properties for ${cls._fullSymName}`)
         if (cls.property) {
             // Although we've removed methods with the same name as an inherited
             // property we still need to filter out properties with the same
             // name as an inherited method.
             const dash = /-/g
+            // The boolean value indicates whether the property belongs to
+            // cls (true) or an interface (false)
+            const propsMap: Map<string, boolean> = new Map()
             let props: GirVariable[] = []
             let self = true
             this.forEachInterfaceAndSelf(cls, e => {
-                if (!e.property) {
-                    self = false
-                    return
-                }
-                props = props.concat(e.property.filter(p => {
+                debLog(`    >>>> for component ${cls._fullSymName}`)
+                props = props.concat((e.property || []).filter(p => {
                     if (!p.$.name)
                         return false
                     const xName = p.$.name.replace(dash, '_')
                     if (fnMap.has(xName)) {
+                        debLog(`        Hiding property ${cls._fullSymName}.${xName} ` +
+                            "due to a clash with an inherited method")
                         if (self) {
                             console.warn(`Hiding property ${cls._fullSymName}.${xName} ` +
                                 "due to a clash with an inherited method")
                         }
                         return false
+                    } else if (propsMap.has(p.$.name)) {
+                        debLog(`        Prop "${p.$.name}" already declared`)
+                        return false
+                    } else {
+                        debLog(`        Prop "${p.$.name}" is new`)
+                        propsMap.set(p.$.name, self)
+                        return true
                     }
-                    return true
                 }))
                 self = false
+                debLog(`    <<<< for component ${cls._fullSymName}`)
             })
+            debLog("    **** Adding property definitions")
             if (props.length) {
                 let prefix = "GObject."
                 if (this.name == "GObject") prefix = ""
                 def.push("    // Properties")
                 for (let p of props) {
-                    let [desc, name, origName] = this.getProperty(p, false)
+                    // Some properties are construct-only overloads of
+                    // an implemnted interface property, so we use the self
+                    // flag from propsMap to force them to be included
+                    let [desc, name, origName] = this.getProperty(p,
+                        propsMap.get(p.$.name || "") === true)
+                    debLog(`        name ${name} origName ${origName}: [${desc}]`)
                     def = def.concat(desc)
                     // Each property also has a signal
                     if (origName) {
@@ -1226,6 +1254,7 @@ export class GirModule {
                 }
             }
         }
+        debLog(`<<<< Properties for ${cls._fullSymName}`)
         const mDef = this.exportOverloadableMethods(fnMap, explicits)
         if (mDef.length) {
             def.push(`    // Instance and signal methods`)
