@@ -897,7 +897,7 @@ export class GirModule {
     }
 
     private forEachInterfaceAndSelf(e: GirClass,
-                                    callback: ((cls: GirClass) => void)) {
+            callback: ((cls: GirClass) => void)) {
         callback(e)
         this.forEachInterface(e, callback)
     }
@@ -1191,7 +1191,6 @@ export class GirModule {
         let def: string[] = []
         doLog = cls._fullSymName == "Gtk.FileChooserDialog"
         debLog(`>>>> Properties for ${cls._fullSymName}`)
-        if (cls.property) {
             // Although we've removed methods with the same name as an inherited
             // property we still need to filter out properties with the same
             // name as an inherited method.
@@ -1202,66 +1201,66 @@ export class GirModule {
             let props: GirVariable[] = []
             let self = true
             this.forEachInterfaceAndSelf(cls, e => {
-                debLog(`    >>>> for component ${cls._fullSymName}`)
-                props = props.concat((e.property || []).filter(p => {
-                    if (!p.$.name)
-                        return false
-                    const xName = p.$.name.replace(dash, '_')
-                    const mapped = propsMap.get(p.$.name)
-                    if (fnMap.has(xName)) {
-                        debLog(`        Hiding property ${cls._fullSymName}.${xName} ` +
+            debLog(`    >>>> for component ${e._fullSymName}`)
+            props = props.concat((e.property || []).filter(p => {
+                if (!p.$.name)
+                    return false
+                const xName = p.$.name.replace(dash, '_')
+                const mapped = propsMap.get(p.$.name)
+                if (fnMap.has(xName)) {
+                    debLog(`        Hiding property ${cls._fullSymName}.${xName} ` +
+                        "due to a clash with an inherited method")
+                    if (self) {
+                        console.warn(`Hiding property ${cls._fullSymName}.${xName} ` +
                             "due to a clash with an inherited method")
-                        if (self) {
-                            console.warn(`Hiding property ${cls._fullSymName}.${xName} ` +
-                                "due to a clash with an inherited method")
-                        }
-                        return false
-                    } else if (mapped) {
-                        debLog(`        Prop "${p.$.name}" already declared`)
-                        if (mapped === 1) {
-                            propsMap.set(p.$.name, 2)
-                        }
-                        return false
-                    } else {
-                        debLog(`        Prop "${p.$.name}" is new`)
-                        propsMap.set(p.$.name, self ? 1 : 0)
-                        return true
                     }
-                }))
-                self = false
-                debLog(`    <<<< for component ${cls._fullSymName}`)
-            })
-            debLog("    **** Adding property definitions")
-            if (props.length) {
-                let prefix = "GObject."
-                if (this.name == "GObject") prefix = ""
-                def.push("    // Properties")
-                for (let p of props) {
-                    // Some properties are construct-only overloads of
-                    // an implemnted interface property, so we use the self
-                    // flag from propsMap to force them to be included
-                    let [desc, name, origName] = this.getProperty(p,
-                        propsMap.get(p.$.name || "") === 2, false)
-                    debLog(`        name ${name} origName ${origName}: [${desc}]`)
-                    def = def.concat(desc)
-                    // Each property also has a signal
-                    if (origName) {
-                        const sigName = `sigName: "notify::${origName}"`
-                        const params = `pspec: ${prefix}ParamSpec`
-                        const callback = `(${params}) => void`
-                        const signature = `(${sigName}, obj: ${cls.$.name}, ` +
-                            `callback: ${callback}): number`
-                        this.mergeOverloadableFunctions(fnMap,
-                            [[`    connect${signature}`], "connect"], true)
-                        this.mergeOverloadableFunctions(fnMap,
-                            [[`    connect_after${signature}`], "connect_after"], true)
-                        this.mergeOverloadableFunctions(fnMap,
-                            [[`    emit(sigName: ${sigName}, ${params}): void`], "emit"], true)
+                    return false
+                } else if (mapped) {
+                    debLog(`        Prop "${p.$.name}" already declared`)
+                    if (mapped === 1) {
+                        propsMap.set(p.$.name, 2)
                     }
+                    return false
+                } else {
+                    debLog(`        Prop "${p.$.name}" is new`)
+                    propsMap.set(p.$.name, self ? 1 : 0)
+                    return true
+                }
+            }))
+            self = false
+            debLog(`    <<<< for component ${cls._fullSymName}`)
+        })
+        debLog("    **** Adding property definitions")
+        if (props.length) {
+            let prefix = "GObject."
+            if (this.name == "GObject") prefix = ""
+            def.push("    // Properties")
+            for (let p of props) {
+                // Some properties are construct-only overloads of
+                // an implemnted interface property, so we use the self
+                // flag from propsMap to force them to be included
+                let [desc, name, origName] = this.getProperty(p,
+                    propsMap.get(p.$.name || "") === 2, false)
+                debLog(`        name ${name} origName ${origName}: [${desc}]`)
+                def = def.concat(desc)
+                // Each property also has a signal
+                if (origName) {
+                    const sigName = `sigName: "notify::${origName}"`
+                    const params = `pspec: ${prefix}ParamSpec`
+                    const callback = `(${params}) => void`
+                    const signature = `(${sigName}, obj: ${cls.$.name}, ` +
+                        `callback: ${callback}): number`
+                    this.mergeOverloadableFunctions(fnMap,
+                        [[`    connect${signature}`], "connect"], true)
+                    this.mergeOverloadableFunctions(fnMap,
+                        [[`    connect_after${signature}`], "connect_after"], true)
+                    this.mergeOverloadableFunctions(fnMap,
+                        [[`    emit(sigName: ${sigName}, ${params}): void`], "emit"], true)
                 }
             }
         }
         debLog(`<<<< Properties for ${cls._fullSymName}`)
+        doLog = false
         const mDef = this.exportOverloadableMethods(fnMap, explicits)
         if (mDef.length) {
             def.push(`    // Instance and signal methods`)
