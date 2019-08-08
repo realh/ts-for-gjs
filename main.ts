@@ -1172,10 +1172,10 @@ export class GirModule {
 
     private exportOverloadableMethods(fnMap: FunctionMap, explicits: Set<string>) {
         let def: string[] = []
-        for (const k of explicits.keys()) {
+        for (const k in explicits.keys()) {
             const f = fnMap.get(k)
             if (f)
-                def.push(...f[0])
+                def.push(...f)
         }
         return def
     }
