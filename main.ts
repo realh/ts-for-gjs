@@ -639,7 +639,10 @@ export class GirModule {
         return [[`${name}${nameSuffix}: ${typeName}`], name]
     }
 
-    private getProperty(v: GirVariable, construct: boolean = false): [string[], string|null, string|null] {
+    // construct means include the property even if it's construct-only,
+    // optional means if it's construct-only it will also be marked optional (?)
+    private getProperty(v: GirVariable, construct: boolean = false,
+            optional = true): [string[], string|null, string|null] {
         if (!construct && this.girBool(v.$["construct-only"]) &&
                 !this.girBool(v.$.readable)) {
             debLog(`        Rejecting ${v.$.name}: construct-only`)
@@ -656,7 +659,7 @@ export class GirModule {
 
         let propPrefix = (!this.girBool(v.$.writable) ||
             this.girBool(v.$["construct-only"])) ? 'readonly ' : ''
-        let [propDesc,propName] = this.getVariable(v, construct, true)
+        let [propDesc,propName] = this.getVariable(v, construct && optional, true)
 
         if (!propName) {
             debLog(`        Rejecting ${v.$.name}: null propName`)
@@ -1186,16 +1189,16 @@ export class GirModule {
             }
         }
         let def: string[] = []
-        doLog = cls._fullSymName == "Gio.SimpleAction"
+        doLog = cls._fullSymName == "Gtk.FileChooserDialog"
         debLog(`>>>> Properties for ${cls._fullSymName}`)
         if (cls.property) {
             // Although we've removed methods with the same name as an inherited
             // property we still need to filter out properties with the same
             // name as an inherited method.
             const dash = /-/g
-            // The boolean value indicates whether the property belongs to
-            // cls (true) or an interface (false)
-            const propsMap: Map<string, boolean> = new Map()
+            // The value indicates whether the property belongs to
+            // cls (1 if cls only, 2 if also iface) or an interface (0)
+            const propsMap: Map<string, number> = new Map()
             let props: GirVariable[] = []
             let self = true
             this.forEachInterfaceAndSelf(cls, e => {
@@ -1204,6 +1207,7 @@ export class GirModule {
                     if (!p.$.name)
                         return false
                     const xName = p.$.name.replace(dash, '_')
+                    const mapped = propsMap.get(p.$.name)
                     if (fnMap.has(xName)) {
                         debLog(`        Hiding property ${cls._fullSymName}.${xName} ` +
                             "due to a clash with an inherited method")
@@ -1212,12 +1216,15 @@ export class GirModule {
                                 "due to a clash with an inherited method")
                         }
                         return false
-                    } else if (propsMap.has(p.$.name)) {
+                    } else if (mapped) {
                         debLog(`        Prop "${p.$.name}" already declared`)
+                        if (mapped === 1) {
+                            propsMap.set(p.$.name, 2)
+                        }
                         return false
                     } else {
                         debLog(`        Prop "${p.$.name}" is new`)
-                        propsMap.set(p.$.name, self)
+                        propsMap.set(p.$.name, self ? 1 : 0)
                         return true
                     }
                 }))
@@ -1234,7 +1241,7 @@ export class GirModule {
                     // an implemnted interface property, so we use the self
                     // flag from propsMap to force them to be included
                     let [desc, name, origName] = this.getProperty(p,
-                        propsMap.get(p.$.name || "") === true)
+                        propsMap.get(p.$.name || "") === 2, false)
                     debLog(`        name ${name} origName ${origName}: [${desc}]`)
                     def = def.concat(desc)
                     // Each property also has a signal
@@ -1407,7 +1414,7 @@ export class GirModule {
             let constructPropNames = {}
             if (e.property) {
                 for (let p of e.property) {
-                    let [desc, name] = this.getProperty(p, true)
+                    let [desc, name] = this.getProperty(p, true, true)
                     def = def.concat(this.checkName(desc, name, constructPropNames)[0])
                 }
             }
