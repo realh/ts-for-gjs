@@ -1141,7 +1141,7 @@ export class GirModule {
 
     // Used for <method> and <virtual-method>
     private processOverloadableMethods(cls: GirClass,
-            getMethods: (e: GirClass) => FunctionDescription[]):
+            getMethods: (e: GirClass) => FunctionDescription[], statics = false):
             [FunctionMap, Set<string>] {
         const [fnMap, explicits] = this.mapOverloadableMethods(cls, getMethods)
         // Have to implement methods from cls' interfaces
@@ -1156,10 +1156,15 @@ export class GirModule {
                 bottom = false
                 return
             }
-            this.forEachInterfaceAndSelf(e, iface => {
-                const funcs = getMethods(iface)
+            if (statics) {
+                const funcs = getMethods(e)
                 this.addOverloadableFunctions(fnMap, explicits, funcs, false)
-            })
+            } else {
+                this.forEachInterfaceAndSelf(e, iface => {
+                    const funcs = getMethods(iface)
+                    this.addOverloadableFunctions(fnMap, explicits, funcs, false)
+                })
+            }
         })
 
         return [fnMap, explicits]
@@ -1186,6 +1191,12 @@ export class GirModule {
             methods = methods.filter(f => f[1] != null)
             return methods
         })
+        return this.exportOverloadableMethods(fnMap, explicits)
+    }
+
+    private processStaticFunctions(cls: GirClass,
+            getter: (e: GirClass) => FunctionDescription[]): string[] {
+        const [fnMap, explicits] = this.processOverloadableMethods(cls, getter)
         return this.exportOverloadableMethods(fnMap, explicits)
     }
 
@@ -1294,9 +1305,8 @@ export class GirModule {
     }
 
     private getStaticConstructors(e: GirClass,
-                                  filter?: (funcName: string) => boolean,
-                                  targetMod?: GirModule): FunctionDescription[]
-    {
+            filter?: (funcName: string) => boolean,
+            targetMod?: GirModule): FunctionDescription[] {
         let funcs = e['constructor']
         if (!Array.isArray(funcs))
             return [[[], null]]
@@ -1308,11 +1318,12 @@ export class GirModule {
     }
 
     private getOtherStaticFunctions(e: GirClass, stat = true,
-                                    targetMod?: GirModule): FunctionDescription[] {
+            targetMod?: GirModule): FunctionDescription[] {
         let fns: FunctionDescription[] = []
         if (e.function) {
             for (let f of e.function) {
-                let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ", null, targetMod)
+                let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ",
+                    null, targetMod)
                 if (funcName && funcName !== "new")
                     fns.push([desc, funcName])
             }
@@ -1391,47 +1402,14 @@ export class GirModule {
         }
     }
 
-    // Generates a TS interface for a GObject class or interface. By using this
-    // on classes as well as interfaces we gain compile-time checking that a
-    // class implementing a GObject interface satisifies the interface's
-    // class prerequisite.
-    private exportInterfaceInternal(e: GirClass) {
-        const details = this.getClassDetails(e)
-        if (!details)
-            return []
-        const exts = new Set()
-        if (details.localParentName)
-            exts.add(details.localParentName)
-        this.forEachImplementedLocalName(e, n => exts.add(n))
-        let def: string[] = [`export interface ${details.name}`]
-        if (exts.size) {
-            def[0] += " extends " + Array.from(exts).join(", ")
-        }
-        def[0] += " {"
-
-        const localNames = {}
-
-        def = def.concat(this.processProperties(e, localNames))
-        // See similar commented line in exportClassInternal
-        //def = def.concat(this.processFields(e, localNames))
-        def = def.concat(this.processOverloadableMethods(e, false))
-        def = def.concat(this.processVirtualMethods(e, false))
-        // Overloading signal functions doesn't seem to work in interfaces
-        def = def.concat(this.processSignals(e))
-
-        def.push('}')
-
-        return def
-    }
-
-    // Represents a record or GObject class as a Typescript class
+    // Represents a record or GObject class or interface as a Typescript class
     private exportClassInternal(e: GirClass, record = false) {
         if (e.$ && e.$["glib:is-gtype-struct-for"]) {
             return []   
         }
         const details = this.getClassDetails(e)
         if (!details) return []
-        const {name, qualifiedName, parentName, localParentName} = details
+        const {name, parentName, localParentName} = details
         const isDerivedFromGObject = this.isDerivedFromGObject(e)
 
         let def: string[] = []
@@ -1453,6 +1431,9 @@ export class GirModule {
         }
 
         // Class definition starts here
+
+        // TS classes implicitly have an interface with the same name so we
+        // can use them in implements etc even though they're declared as classes
         let parents = ""
         if (e.$.parent) {
             parents += ` extends ${localParentName}`;
@@ -1471,71 +1452,48 @@ export class GirModule {
         // Can't export fields for GObjects because names would clash
         if (record)
             def = def.concat(this.processFields(e, localNames))
-        def = def.concat(this.processOverloadableMethods(e, true))
-        def = def.concat(this.processVirtualMethods(e, true))
-        def = def.concat(this.processSignals(e))
+
+        def = def.concat(this.processInstanceMethodsSignalsProperties(e))
+        def = def.concat(this.processVirtualMethods(e))
+
+        if (isDerivedFromGObject || e.prerequisite) {
+            def.push("    // Type field")
+            def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
+        }
 
         // JS constructor(s)
+        let stc: string[] = []
         if (isDerivedFromGObject) {
-            def.push(`    static $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
-            def.push(`    constructor (config?: ${name}_ConstructProps)`)
-            def.push(`    _init (config?: ${name}_ConstructProps): void`)
+            stc.push(`    constructor(config?: ${name}_ConstructProps)`)
+            stc.push(`    _init(config?: ${name}_ConstructProps): void`)
+        } else if (e.prerequisite) {
+            // Interfaces can't be instantiated
+            stc = def.concat("    protected constructor(a?: any)")
         } else {
-            let [desc, funcName] = this.getStaticNew(e)
-            if (funcName) {
-                def = def.concat(desc)
-                def = def.concat(this.getOverloads(e, desc, funcName,
-                        (mod, cls) => [mod.getStaticNew(e, this)]))
-                const jsStyleCtor = desc[0]
-                    .replace("static new", "constructor")
-                    .replace(/:[^:]+$/, "")
-                def = def.concat(jsStyleCtor)
-            }
+            stc = this.processStaticFunctions(e, cls => [this.getStaticNew(cls)])
+        }
+        if (stc.length) {
+            def.push("    // Constructor")
+            def = def.concat(stc)
         }
 
         // Records, classes and interfaces all have a static name
         def.push("    static name: string")
 
         // Static methods, <constructor> and <function>
-        let stc: string[] = []
-        let ctors = this.getStaticConstructors(e, fn => fn !== "new")
-        if (ctors) {
-            for (let [desc, funcName] of ctors) {
-                if (!funcName) continue
-                stc = stc.concat(desc)
-                stc = stc.concat(this.getOverloads(e, desc, funcName,
-                    (mod, cls) => mod.getStaticConstructors(cls, fn => fn !== "new", this)))
-            }
-        }
-        for (let [desc, funcName] of this.getOtherStaticFunctions(e)) {
-            stc = stc.concat(desc)
-            if (funcName) {
-                stc = stc.concat(this.getOverloads(e, desc, funcName,
-                    (mod, cls) => mod.getOtherStaticFunctions(cls, true, this)))
-            }
-        }
+        stc = []
+        stc = stc.concat(this.processStaticFunctions(e, cls => {
+            return this.getStaticConstructors(cls, fn => fn !== "new")
+        }))
+        stc = stc.concat(this.processStaticFunctions(e, cls => {
+            return this.getOtherStaticFunctions(cls)
+        }))
         if (stc.length > 0) {
+            def.push("    // Static methods and pseudo-constructors")
             def = def.concat(stc)
         }
 
         def.push("}")
-        return def
-    }
-
-    // GInterfaces can have static methods and are also associated with a
-    // concrete object used to initialise implementation classes, so provide
-    // this as a TS object (not a class).
-    private exportIfaceObject(e: GirClass) {
-        const details = this.getClassDetails(e)
-        if (!details)
-            return []
-        let def: string[] = [`export const ${details.name}: {`]
-        def.push(`    $gtype: ${this.name == "GObject" ? "" : "GObject."}Type`)
-        def.push(`    name: string`)
-        for (const [desc, name] of this.getOtherStaticFunctions(e, false)) {
-            def = def.concat(desc)
-        }
-        def.push('}')
         return def
     }
 
@@ -1547,12 +1505,6 @@ export class GirModule {
         let name = e.$.name
 
         return [`type ${name} = ${typeName}`]
-    }
-
-    exportInterface(e: GirClass) {
-        let def = this.exportInterfaceInternal(e)
-        def = def.concat(this.exportIfaceObject(e))
-        return def
     }
 
     exportJs(outStream: NodeJS.WritableStream) {
@@ -1604,10 +1556,8 @@ export class GirModule {
                 out = out.concat(this.exportCallback(e))
 
         if (this.ns.interface)
-            for (let e of this.ns.interface) {
-                out = out.concat(this.exportInterfaceInternal(e))
-                out = out.concat(this.exportIfaceObject(e))
-            }
+            for (let e of this.ns.interface)
+                out = out.concat(this.exportClassInternal(e))
 
         // Extra interfaces used to help define GObject classes in js; these
         // aren't part of gi.
@@ -1643,7 +1593,6 @@ export class GirModule {
 
         if (this.ns.class)
             for (let e of this.ns.class) {
-                out = out.concat(this.exportInterfaceInternal(e))
                 out = out.concat(this.exportClassInternal(e, false))
             }
 
@@ -1653,7 +1602,7 @@ export class GirModule {
 
         if (this.ns.union)
             for (let e of this.ns.union)
-                out = out.concat(this.exportInterface(e))
+                out = out.concat(this.exportClassInternal(e, true))
 
         if (this.ns.alias)
             for (let e of this.ns.alias)
