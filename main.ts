@@ -474,6 +474,7 @@ export class GirModule {
 
         if (!fullTypeName || this.symTable[fullTypeName] == null) {
             console.warn(`Could not find type ${fullTypeName} for ${e.$.name}`)
+            throw Error(`Could not find type ${fullTypeName} for ${e.$.name}`)
             return "any" + arr
         }
 
@@ -503,9 +504,12 @@ export class GirModule {
 
         let returnVal = e["return-value"] ? e["return-value"][0] : undefined
         if (returnVal) {
+            debLog(`            getReturnType calling typeLookup ` +
+                `targetMod ${targetMod ? targetMod.name : targetMod}`)
             returnType = this.typeLookup(returnVal, targetMod)
         } else
             returnType = "void"
+        debLog(`            getReturnType: returnType: ${returnType}`)
 
         let outArrayLengthIndex = returnVal && returnVal.array && returnVal.array[0].$.length
             ? Number(returnVal.array[0].$.length)
@@ -570,7 +574,10 @@ export class GirModule {
 
                 for (let param of parametersArray as GirVariable[]) {
                     let paramName = this.fixVariableName(param.$.name || '-', false)
+                    debLog(`            getParameters calling typeLookup ` +
+                        ` for ${paramName} targetMod ${targetMod ? targetMod.name : targetMod}`)
                     let paramType = this.typeLookup(param, targetMod)
+                    debLog(`                paramType ${paramType}`)
 
                     if (skip.indexOf(param) !== -1) {
                         continue
@@ -698,7 +705,11 @@ export class GirModule {
 
         let patch = e._fullSymName ? this.patch[e._fullSymName] : []
         let name = e.$.name
+        debLog(`        getFunction calling getReturnType ` +
+            ` for ${e.$.name} targetMod ${targetMod ? targetMod.name : targetMod}`)
         let [retType, outArrayLengthIndex] = this.getReturnType(e, targetMod)
+        debLog(`        getFunction calling getParameters ` +
+            ` for ${e.$.name} targetMod ${targetMod ? targetMod.name : targetMod}`)
         let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex, targetMod)
 
         if (e.$["shadows"]) {
@@ -742,8 +753,9 @@ export class GirModule {
     }
 
     private getConstructorFunction(name: string, e: GirFunction, prefix: string,
-                                   funcNamePrefix: string | null = null,
-                                   targetMod?: GirModule): FunctionDescription {
+            funcNamePrefix: string | null = null, targetMod?: GirModule):
+            FunctionDescription {
+        debLog("    getConstructorFunction calling getFunction")
         let [desc, funcName] = this.getFunction(e, prefix, funcNamePrefix, targetMod)
 
         if (!funcName)
@@ -768,6 +780,7 @@ export class GirModule {
                 } as GirVariable
             ]
 
+            debLog("    getConstructorFunction calling getFunction again to fix return type")
             desc = this.getFunction(e, prefix, null, targetMod)[0]
         }
 
@@ -1282,8 +1295,12 @@ export class GirModule {
         let funcs = e['constructor']
         if (!Array.isArray(funcs))
             return [[[], null]]
-        let ctors = funcs.map(f =>
-            this.getConstructorFunction(e.$.name, f, "    static ", null, targetMod))
+        let ctors = funcs.map(f => {
+            debLog(`    getStaticConstructors calling getConstructorFunction ` +
+                ` for ${e._fullSymName}.${f.$ ? f.$.name : "<no $>"} targetMod ` +
+                `${targetMod ? targetMod.name : targetMod}`)
+            return this.getConstructorFunction(e.$.name, f, "    static ", null, targetMod)
+        })
         if (filter)
             ctors = ctors.filter(([desc, funcName]) => funcName && filter(funcName))
         return ctors
@@ -1294,6 +1311,9 @@ export class GirModule {
         let fns: FunctionDescription[] = []
         if (e.function) {
             for (let f of e.function) {
+                debLog(`    getOtherStaticFunctions calling getFunction ` +
+                    ` for ${e._fullSymName}.${f.$.name} targetMod ` +
+                    `${targetMod ? targetMod.name : targetMod}`)
                 let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ",
                     null, targetMod)
                 if (funcName && funcName !== "new")
@@ -1439,7 +1459,11 @@ export class GirModule {
             // Interfaces can't be instantiated
             stc = stc.concat("    protected constructor(a?: any)")
         } else {
+            doLog = true
+            debLog(`>>>> Processing static constructors (new) for a non-GObject`)
             stc = this.processStaticFunctions(e, cls => [this.getStaticNew(cls)])
+            debLog(`<<<< Processing static constructors (new) for a non-GObject`)
+            doLog = false
         }
         if (stc.length) {
             def.push("    // Constructor")
@@ -1451,12 +1475,22 @@ export class GirModule {
 
         // Static methods, <constructor> and <function>
         stc = []
+        doLog = true
+        debLog(`>>>> Processing pseudo-constructors of ${e._fullSymName}`)
         stc = stc.concat(this.processStaticFunctions(e, cls => {
-            return this.getStaticConstructors(cls, fn => fn !== "new")
+            debLog(`    >>>> Component ${cls._fullSymName}`)
+            const result = this.getStaticConstructors(cls, fn => fn !== "new")
+            debLog(`    <<<< Component ${cls._fullSymName}`)
+            return result
         }))
+        debLog(`**** Processing other static methods`)
         stc = stc.concat(this.processStaticFunctions(e, cls => {
-            return this.getOtherStaticFunctions(cls)
+            debLog(`    >>>> Component ${cls._fullSymName}`)
+            const result = this.getOtherStaticFunctions(cls)
+            debLog(`    <<<< Component ${cls._fullSymName}`)
+            return result
         }))
+        debLog(`<<<< Processing statics`)
         if (stc.length > 0) {
             def.push("    // Static methods and pseudo-constructors")
             def = def.concat(stc)
