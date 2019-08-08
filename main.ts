@@ -264,12 +264,9 @@ export class GirModule {
         }
         let annotateFunctions = (obj: GirClass|null, funcs: GirFunction[]) => {
             if (funcs) {
-                debLog(`Annotating ${funcs.length} funcs`)
                 for (let f of funcs) {
-                    if (!f || !f.$) {
-                        debLog(`    Skipping func with no $`)
+                    if (!f || !f.$)
                         continue
-                    }
                     let nsName = obj ? obj._fullSymName : this.name
                     f._fullSymName = `${nsName}.${f.$.name}`
                     f._module = this
@@ -277,8 +274,6 @@ export class GirModule {
                     annotateFunctionArguments(f)
                     annotateFunctionReturn(f)
                 }
-            } else {
-                debLog("No functions")
             }
         }
         let annotateVariables = (obj: GirClass|null, vars) => {
@@ -304,9 +299,7 @@ export class GirModule {
         for (let c of objs) {
             c._module = this
             c._fullSymName = `${this.name}.${c.$.name}`
-            debLog(`>>>> annotating constructors of ${c._fullSymName}`)
             annotateFunctions(c, <GirFunction[]>c.constructor || [])
-            debLog(`<<<< annotating constructors of ${c._fullSymName}`)
             annotateFunctions(c, c.function || [])
             annotateFunctions(c, c.method || [])
             annotateFunctions(c, c["virtual-method"] || [])
@@ -470,11 +463,8 @@ export class GirModule {
         if (fullTypeName && fullTypeName.indexOf(".") < 0) {
             let mod: GirModule = this
             if (e._module) mod = e._module
-            debLog(`            Qualifying fullTypeName with ${mod.name} ` +
-                `(this ${this.name}, e._module ${e._module ? e._module.name : e._module})`)
             fullTypeName = `${mod.name}.${type.$.name}`
         }
-        debLog(`            fullTypeName from type.$ is ${fullTypeName}`)
 
         let fullTypeMap = {
             'GObject.Value': 'any',
@@ -518,13 +508,10 @@ export class GirModule {
         let returnType
 
         let returnVal = e["return-value"] ? e["return-value"][0] : undefined
-        if (returnVal) {
-            debLog(`            getReturnType calling typeLookup ` +
-                `targetMod ${targetMod ? targetMod.name : targetMod}`)
+        if (returnVal)
             returnType = this.typeLookup(returnVal, targetMod)
-        } else
+        else
             returnType = "void"
-        debLog(`            getReturnType: returnType: ${returnType}`)
 
         let outArrayLengthIndex = returnVal && returnVal.array && returnVal.array[0].$ &&
                 returnVal.array[0].$.length
@@ -590,10 +577,7 @@ export class GirModule {
 
                 for (let param of parametersArray as GirVariable[]) {
                     let paramName = this.fixVariableName(param.$.name || '-', false)
-                    debLog(`            getParameters calling typeLookup ` +
-                        ` for ${paramName} targetMod ${targetMod ? targetMod.name : targetMod}`)
                     let paramType = this.typeLookup(param, targetMod)
-                    debLog(`                paramType ${paramType}`)
 
                     if (skip.indexOf(param) !== -1) {
                         continue
@@ -669,10 +653,6 @@ export class GirModule {
         if (!construct && this.girBool(v.$["construct-only"]) &&
                 !this.girBool(v.$.readable))
             return [[], null, null]
-        //if (!this.girBool(v.$.writable) && construct) {
-        //    debLog(`        Rejecting ${v.$.name}: readonly, construct`)
-        //    return [[], null, null]
-        //}
         if (this.girBool(v.$.private))
             return [[], null, null]
 
@@ -721,11 +701,7 @@ export class GirModule {
 
         let patch = e._fullSymName ? this.patch[e._fullSymName] : []
         let name = e.$.name
-        debLog(`        getFunction calling getReturnType ` +
-            ` for ${e.$.name} targetMod ${targetMod ? targetMod.name : targetMod}`)
         let [retType, outArrayLengthIndex] = this.getReturnType(e, targetMod)
-        debLog(`        getFunction calling getParameters ` +
-            ` for ${e.$.name} targetMod ${targetMod ? targetMod.name : targetMod}`)
         let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex, targetMod)
 
         if (e.$["shadows"]) {
@@ -773,11 +749,8 @@ export class GirModule {
     private getConstructorFunction(name: string, e: GirFunction, prefix: string,
             funcNamePrefix: string | null = null, targetMod?: GirModule):
             FunctionDescription {
-        if (!e.$) {
-            debLog("    getConstructorFunction ignoring bogus (JS runtime) constructor")
+        if (!e.$)
             return [[], null]
-        }
-        debLog("    getConstructorFunction calling getFunction")
         let [desc, funcName] = this.getFunction(e, prefix, funcNamePrefix, targetMod, name)
         if (!funcName)
             return [[], null]
@@ -1293,9 +1266,6 @@ export class GirModule {
         if (!Array.isArray(funcs))
             return [[[], null]]
         let ctors = funcs.map(f => {
-            debLog(`    getStaticConstructors calling getConstructorFunction ` +
-                ` for ${e._fullSymName}.${f.$ ? f.$.name : "<no $>"} targetMod ` +
-                `${targetMod ? targetMod.name : targetMod}`)
             return this.getConstructorFunction(e.$.name, f, "    static ", null, targetMod)
         })
         if (filter)
@@ -1308,9 +1278,6 @@ export class GirModule {
         let fns: FunctionDescription[] = []
         if (e.function) {
             for (let f of e.function) {
-                debLog(`    getOtherStaticFunctions calling getFunction ` +
-                    ` for ${e._fullSymName}.${f.$.name} targetMod ` +
-                    `${targetMod ? targetMod.name : targetMod}`)
                 let [desc, funcName] = this.getFunction(f, stat ? "    static " : "    ",
                     null, targetMod)
                 if (funcName && funcName !== "new")
@@ -1381,12 +1348,8 @@ export class GirModule {
                 } else {
                     fullName = (this.name || "") + "." + name
                 }
-                if (this.interfaceIsDuplicate(e, fullName)) {
-                    //debLog(`forEachImplementedLocalName excluding ${fullName} ` +
-                    //    `implemented by a superclass of ${e._fullSymName}`)
-                } else {
+                if (!this.interfaceIsDuplicate(e, fullName))
                     callback(name)
-                }
             }
         }
     }
