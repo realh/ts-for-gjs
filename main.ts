@@ -917,62 +917,6 @@ export class GirModule {
         return [desc, true]
     }
 
-    private processProperties(cls: GirClass, localNames: any): string[] {
-        let def: string[] = []
-        if (cls.property) {
-            // If a property clashes with a method in the same class, the property
-            // takes priority and processInstanceMethods will filter out the method.
-            // However, if a property clashes with an inherited method we have to
-            // skip the property instead.
-            const under = /_/g
-            const methodNames = new Set<string>()
-            let bottom = true
-            this.traverseInheritanceTree(cls, scls => {
-                let iter
-                if (bottom) {
-                    iter = (e: GirClass, cb: (e: GirClass)=>void) => {
-                        this.forEachInterface(e, cb)
-                    }
-                    bottom = false
-                } else {
-                    iter = (e: GirClass, cb: (e: GirClass)=>void) => {
-                        this.forEachInterfaceAndSelf(e, cb)
-                    }
-                }
-                iter(scls, e => {
-                    for (const m of e.method || []) {
-                        if (m.$.name) {
-                            methodNames.add(m.$.name.replace(under, '-'))
-                        }
-                    }
-                })
-            })
-            const props = cls.property.filter(p => {
-                if (p.$.name && methodNames.has(p.$.name)) {
-                    console.warn(`Hiding property ${cls._fullSymName}.${p.$.name} ` +
-                        "due to a clash with an inherited method")
-                    return false
-                }
-                return true
-            })
-            if (props.length) {
-                let prefix = "GObject."
-                if (this.name == "GObject") prefix = ""
-                def.push(`    // Properties of ${cls._fullSymName}`)
-                for (let p of props) {
-                    let [desc, name, origName] = this.getProperty(p, false)
-                    let [aDesc, added] = this.checkName(desc, name, localNames)
-                    def = def.concat(aDesc)
-                    if (added && origName) {
-                        def.concat(this.getSignalFuncs(`notify::${p}`, name || "",
-                            `pspec: ${prefix}ParamSpec)`, "void"))
-                    }
-                }
-            }
-        }
-        return def
-    }
-
     private processFields(cls: GirClass, localNames: any): string[] {
         let def: string[] = []
         if (cls.field) {
@@ -1446,9 +1390,6 @@ export class GirModule {
         }
         def.push(`export class ${name}${parents} {`)
         let localNames = {}
-        this.forEachInterfaceAndSelf(e, (cls: GirClass) => {
-            def = def.concat(this.processProperties(cls, localNames))
-        })
         // Can't export fields for GObjects because names would clash
         if (record)
             def = def.concat(this.processFields(e, localNames))
