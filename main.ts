@@ -936,9 +936,9 @@ export class GirModule {
         // GObject.Object signal methods aren't introspected.
         if (cls._fullSymName === "GObject.Object") {
             this.addSignalMethod(methods, "connect",
-                ["    connect(sigName: string, callback: Function): number"])
+                ["    connect<T extends Function>(sigName: string, callback: T): number"])
             this.addSignalMethod(methods, "connect_after",
-                ["    connect_after(sigName: string, callback: Function): number"])
+                ["    connect_after<T extends Function>(sigName: string, callback: T): number"])
             this.addSignalMethod(methods, "disconnect",
                 ["    disconnect(tag: number): void"])
             this.addSignalMethod(methods, "emit",
