@@ -978,26 +978,47 @@ export class GirModule {
             func: FunctionDescription, force = true) {
         if (!func[1])
             return false
+        const didLog = doLog
+        doLog = doLog && func[1] === "connect"
+        debLog(`     >> Overloading ${func[1]}`)
         let defs = map.get(func[1])
         if (!defs) {
             if (force)
+                debLog(`      ${func[1]} unseen, added by force`)
+            else
+                debLog(`      ${func[1]} unseen, not adding`)
+            if (force)
                 map.set(func[1], func[0])
+            doLog = didLog
             return false
         }
+        if (doLog) {
+            debLog(`      > Existing overloads for ${func[1]}`)
+            for (const f of defs) {
+                debLog(`        ${f}`)
+            }
+            debLog(`      < Existing overloads for ${func[1]}`)
+        }
         let result = false
+        debLog(`      > New overloads for ${func[1]}`)
         for (const newDef of func[0]) {
             let match = false
-            for (const oldDef of func[0]) {
+            for (const oldDef of defs) {
                 if (this.functionSignaturesMatch(newDef, oldDef)) {
+                    debLog(`        ${newDef} matches ${oldDef}`)
                     match = true
                     break
                 }
             }
             if (!match) {
+                debLog(`        No matches for ${newDef}, adding it`)
                 defs.push(newDef)
                 result = true
             }
         }
+        debLog(`      < New overloads for ${func[1]}`)
+        debLog(`     << Overloading ${func[1]}`)
+        doLog = didLog
         return result
     }
 
@@ -1385,7 +1406,7 @@ export class GirModule {
         if (record)
             def = def.concat(this.processFields(e, localNames))
 
-        doLog = e._fullSymName == "Vte.Terminal"
+        doLog = e._fullSymName == "Gio.Cancellable"
         def = def.concat(this.processInstanceMethodsSignalsProperties(e))
         doLog = false
         def = def.concat(this.processVirtualMethods(e))
