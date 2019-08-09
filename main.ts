@@ -271,7 +271,6 @@ export class GirModule {
                     let nsName = obj ? obj._fullSymName : this.name
                     f._fullSymName = `${nsName}.${f.$.name}`
                     f._module = this
-                    deblog(`    ${f._fullSymName} is in module ${f._module.name}`)
                     annotateFunctionArguments(f)
                     annotateFunctionReturn(f)
                 }
@@ -978,47 +977,26 @@ export class GirModule {
             func: FunctionDescription, force = true) {
         if (!func[1])
             return false
-        const didLog = doLog
-        doLog = doLog && func[1] === "connect"
-        debLog(`     >> Overloading ${func[1]}`)
         let defs = map.get(func[1])
         if (!defs) {
             if (force)
-                debLog(`      ${func[1]} unseen, added by force`)
-            else
-                debLog(`      ${func[1]} unseen, not adding`)
-            if (force)
                 map.set(func[1], func[0])
-            doLog = didLog
             return false
         }
-        if (doLog) {
-            debLog(`      > Existing overloads for ${func[1]}`)
-            for (const f of defs) {
-                debLog(`        ${f}`)
-            }
-            debLog(`      < Existing overloads for ${func[1]}`)
-        }
         let result = false
-        debLog(`      > New overloads for ${func[1]}`)
         for (const newDef of func[0]) {
             let match = false
             for (const oldDef of defs) {
                 if (this.functionSignaturesMatch(newDef, oldDef)) {
-                    debLog(`        ${newDef} matches ${oldDef}`)
                     match = true
                     break
                 }
             }
             if (!match) {
-                debLog(`        No matches for ${newDef}, adding it`)
                 defs.push(newDef)
                 result = true
             }
         }
-        debLog(`      < New overloads for ${func[1]}`)
-        debLog(`     << Overloading ${func[1]}`)
-        doLog = didLog
         return result
     }
 
@@ -1029,41 +1007,29 @@ export class GirModule {
     // if it doesn't already contain a function of the same name.
     private addOverloadableFunctions(fnMap: FunctionMap, explicits: Set<string>,
             funcs: FunctionDescription[], force = false) {
-        deblog(`   > Adding functions`)
         for (const func of funcs) {
             if (!func[1]) continue
             if (this.mergeOverloadableFunctions(fnMap, func) || force) {
-                deblog(`    ${func[1]} added`)
                 explicits.add(func[1])
-            } else {
-                deblog(`    ${func[1]} not added`)
             }
         }
-        deblog(`   < Adding functions, explicits size ${explicits.size}`)
     }
 
     // Used for <method> and <virtual-method>
     private processOverloadableMethods(cls: GirClass,
             getMethods: (e: GirClass) => FunctionDescription[], statics = false):
             [FunctionMap, Set<string>] {
-        deblog(` >>> processOverloadableMethods: adding own methods`)
         const fnMap: FunctionMap = new Map()
         const explicits = new Set<string>()
         const funcs = getMethods(cls)
         this.addOverloadableFunctions(fnMap, explicits, funcs, true)
-        deblog(` <<< processOverloadableMethods: own methods`)
         // Have to implement methods from cls' interfaces
-        deblog(` >>> processOverloadableMethods: adding implemented methods`)
         this.forEachInterface(cls, iface => {
             if (!this.interfaceIsDuplicate(cls, iface)) {
                 const funcs = getMethods(iface)
                 this.addOverloadableFunctions(fnMap, explicits, funcs, true)
-            } else {
-                deblog(`  ** Skipping ${iface._fullSymName} implemented by super`)
             }
         }, false)
-        deblog(` <<< processOverloadableMethods: adding implemented methods`)
-        deblog(` >>> processOverloadableMethods: overloads from base classes`)
         // Check for overloads among all inherited methods
         let bottom = true
         this.traverseInheritanceTree(cls, e => {
@@ -1077,13 +1043,6 @@ export class GirModule {
             } else {
                 let self = true
                 this.forEachInterfaceAndSelf(e, iface => {
-                    if (self) {
-                        deblog(` *** Overloads from base class ${iface._fullSymName}`)
-                    } else if (this.interfaceIsDuplicate(cls, iface)) {
-                        deblog(` *** Overloads from interface ${iface._fullSymName}`)
-                    } else {
-                        deblog(` *** Interface ${iface._fullSymName} directly implemented`)
-                    }
                     if (self || this.interfaceIsDuplicate(cls, iface)) {
                         const funcs = getMethods(iface)
                         this.addOverloadableFunctions(fnMap, explicits, funcs, false)
@@ -1092,8 +1051,6 @@ export class GirModule {
                 })
             }
         })
-        deblog(` <<< processOverloadableMethods: overloads from base classes`)
-        deblog(` *** explicits size ${explicits.size}`)
         return [fnMap, explicits]
     }
 
@@ -1131,23 +1088,11 @@ export class GirModule {
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
     private processInstanceMethodsSignalsProperties(cls: GirClass): string[] {
-        deblog(">>>> Instance methods")
         const [fnMap, explicits] = this.processOverloadableMethods(cls, e => {
             // This already filters out methods with same name as superclass
             // properties
-            //return this.getInstanceMethods(e)
-            const result = this.getInstanceMethods(e)
-            deblog(`  >> Instance methods of ${e._fullSymName}`)
-            for (const f of result) {
-                deblog(`    ${f[1]}`)
-            }
-            deblog(`  << Instance methods of ${e._fullSymName}`)
-            return result
+            return this.getInstanceMethods(e)
         })
-        deblog(`**** Instance methods: ${explicits.size} explicits`)
-        for (const f of Array.from(explicits.values())) {
-            deblog(`    ${f}`)
-        }
         // Add specific signal methods
         const signals = cls["glib:signal"]
         if (signals && signals.length) {
@@ -1425,9 +1370,7 @@ export class GirModule {
             // Interfaces can't be instantiated
             stc = stc.concat("    protected constructor(a?: any)")
         } else {
-            deblog(`>>>> Processing static constructors (new) for a non-GObject`)
             stc = this.processStaticFunctions(e, cls => [this.getStaticNew(cls)])
-            deblog(`<<<< Processing static constructors (new) for a non-GObject`)
         }
         if (stc.length) {
             def.push("    // Constructor")
@@ -1439,21 +1382,12 @@ export class GirModule {
 
         // Static methods, <constructor> and <function>
         stc = []
-        deblog(`>>>> Processing pseudo-constructors of ${e._fullSymName}`)
         stc = stc.concat(this.processStaticFunctions(e, cls => {
-            deblog(`    >>>> Component ${cls._fullSymName}`)
-            const result = this.getStaticConstructors(cls, fn => fn !== "new")
-            deblog(`    <<<< Component ${cls._fullSymName}`)
-            return result
+            return this.getStaticConstructors(cls, fn => fn !== "new")
         }))
-        deblog(`**** Processing other static methods`)
         stc = stc.concat(this.processStaticFunctions(e, cls => {
-            deblog(`    >>>> Component ${cls._fullSymName}`)
-            const result = this.getOtherStaticFunctions(cls)
-            deblog(`    <<<< Component ${cls._fullSymName}`)
-            return result
+            return this.getOtherStaticFunctions(cls)
         }))
-        deblog(`<<<< Processing statics`)
         if (stc.length > 0) {
             def.push("    // Static methods and pseudo-constructors")
             def = def.concat(stc)
