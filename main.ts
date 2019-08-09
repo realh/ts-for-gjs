@@ -1226,7 +1226,7 @@ export class GirModule {
                     this.mergeOverloadableFunctions(fnMap,
                         [[`    connect_after${signature}`], "connect_after"], true)
                     this.mergeOverloadableFunctions(fnMap,
-                        [[`    emit(sigName: ${sigName}, ${params}): void`], "emit"], true)
+                        [[`    emit(${sigName}, ${params}): void`], "emit"], true)
                 }
             }
         }
