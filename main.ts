@@ -757,51 +757,6 @@ export class GirModule {
         return [desc, funcName]
     }
 
-    // 1. Signal details are provided by a GirFunction
-    private getSignalFuncs(e: GirFunction, clsName: string)
-    // 2. Signal details are provided as signal name, target class name,
-    //    params (excluding arg1: emitter) and return type as strings
-    private getSignalFuncs(sigName: string, clsName: string, params: string,
-                          retType: string)
-    // 3. Gets the standard generic signal functions for a named class
-    private getSignalFuncs(clsName: string)
-    // 4. Implementation
-    private getSignalFuncs(signal: string | GirFunction, clsName?: string,
-                          params?: string, retType?: string) {
-        let gen = ""
-        const genDef = "<T extends string, V extends Function>"
-        if (typeof signal != "string") {
-            let outArrayLengthIndex = 0;
-            let outParams: string[] = [];
-            [retType, outArrayLengthIndex] = this.getReturnType(signal);
-            [params, outParams] = this.getParameters(signal.parameters,
-                                                     outArrayLengthIndex);
-            signal = `"${signal.$.name}"`;
-        } else if (!clsName) {
-            gen = genDef
-            clsName = signal
-            signal = "T"
-        } else {
-            signal = `"${signal}"`
-        }
-        let callback
-        let emit
-        if (params !== undefined) {
-            let paramComma = params.length > 0 ? ', ' : ''
-            callback = `(obj: ${clsName}${paramComma}${params}) => ${retType}`
-            emit = `${paramComma}${params}`
-        } else {
-            gen = genDef
-            callback = "V"
-            emit = ", ...args: any[]"
-        }
-        return [
-            `    connect${gen}(sigName: ${signal}, callback: ${callback}): number`,
-            `    connect_after${gen}(sigName: ${signal}, callback: ${callback}): number`,
-            `    emit${gen}(sigName: ${signal}${emit}): void`
-        ]
-    }
-
     exportFunction(e: GirFunction) {
         return this.getFunction(e, "export function ")[0]
     }
