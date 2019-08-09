@@ -983,6 +983,8 @@ export class GirModule {
                 ["    connect(sigName: string, callback: Function): number"])
             this.addSignalMethod(methods, "connect_after",
                 ["    connect_after(sigName: string, callback: Function): number"])
+            this.addSignalMethod(methods, "disconnect",
+                ["    disconnect(tag: number): void"])
             this.addSignalMethod(methods, "emit",
                 ["    emit(sigName: string, ...args: any[]): void"])
         }
