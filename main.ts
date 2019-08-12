@@ -1364,8 +1364,6 @@ export class GirModule {
         } else if (e.prerequisite) {
             // Interfaces can't be instantiated
             stc = stc.concat("    protected constructor(a?: any)")
-        } else {
-            stc = this.processStaticFunctions(e, cls => [this.getStaticNew(cls)])
         }
         if (stc.length) {
             def.push("    // Constructor")
@@ -1378,7 +1376,7 @@ export class GirModule {
         // Static methods, <constructor> and <function>
         stc = []
         stc = stc.concat(this.processStaticFunctions(e, cls => {
-            return this.getStaticConstructors(cls, fn => fn !== "new")
+            return this.getStaticConstructors(cls)
         }))
         stc = stc.concat(this.processStaticFunctions(e, cls => {
             return this.getOtherStaticFunctions(cls)
