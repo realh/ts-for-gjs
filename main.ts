@@ -190,7 +190,6 @@ export class GirModule {
     repo: GirRepository
     ns: GirNamespace = { $: { name: "", version: "" } }
     symTable: { [key:string]: any } = {}
-    patch: { [key:string]: string[] } = {}
 
     constructor(xml) {
         this.repo = xml.repository
@@ -699,7 +698,6 @@ export class GirModule {
         if (!e || !e.$ || !this.girBool(e.$.introspectable, true) || e.$["shadowed-by"])
             return [[], null]
 
-        let patch = e._fullSymName ? this.patch[e._fullSymName] : []
         let name = e.$.name
         let [retType, outArrayLengthIndex] = this.getReturnType(e, targetMod)
         let [params, outParams] = this.getParameters(e.parameters, outArrayLengthIndex, targetMod)
@@ -717,18 +715,12 @@ export class GirModule {
             debugger;
         }
 
-        if (patch && patch.length === 1)
-            return [patch, null]    
-        
         let reservedWords = {
             'false': 1, 'true': 1, 'break': 1
         }
 
         if (reservedWords[name])
             return [[`/* Function '${name}' is a reserved word */`], null]
-
-        if (patch && patch.length === 2)
-            return [[`${prefix}${funcNamePrefix}${patch[patch.length - 1]}`], name]
 
         let retTypeIsVoid = retType == 'void'
         if (overrideReturnType) {
@@ -1500,15 +1492,8 @@ export class GirModule {
             }
 
         if (this.ns.record)
-            for (let e of this.ns.record) {
-                doLog = e._fullSymName === "Gio.DBusProxyClass" ||
-                    e._fullSymName === "Gio.DBusInterfaceSkeletonClass"
-                debLog(`>> Exporting record ${e._fullSymName}`)
-                //out = out.concat(this.exportClassInternal(e, true))
-                const rec = this.exportClassInternal(e, true)
-                out = out.concat(rec)
-
-            }
+            for (let e of this.ns.record)
+                out = out.concat(this.exportClassInternal(e, true))
 
         if (this.ns.union)
             for (let e of this.ns.union)
@@ -1795,33 +1780,6 @@ function main() {
         k.transitiveDependencies = lodash.keys(ret)
     }
 
-    let patch = {
-        "Atk.Object.get_description": [
-            "/* return type clashes with Atk.Action.get_description */",
-            "get_description(): string | null"
-        ],
-        "Atk.Object.get_name": [
-            "/* return type clashes with Atk.Action.get_name */",
-            "get_name(): string | null"
-        ],
-        "Atk.Object.set_description": [
-            "/* return type clashes with Atk.Action.set_description */",
-            "set_description(description: string): boolean | null"
-        ],
-        'Gtk.Container.child_notify': [
-            '/* child_notify clashes with Gtk.Widget.child_notify */'
-        ],
-        'Gtk.MenuItem.activate': [
-            '/* activate clashes with Gtk.Widget.activate */'
-        ],
-        'Gtk.TextView.get_window': [
-            '/* get_window clashes with Gtk.Widget.get_window */'
-        ],
-        'WebKit.WebView.get_settings': [
-            '/* get_settings clashes with Gtk.Widget.get_settings */'
-        ]
-    }
-
     console.log("Types loaded, generating .d.ts...")
     
     for (let k of lodash.keys(girModules)) {
@@ -1833,7 +1791,6 @@ function main() {
             outf = fs.createWriteStream(fileName)
         }
         console.log(` - ${k} ...`)
-        girModules[k].patch = patch
         girModules[k].export(outf)
 
         if (commander.outdir) {
