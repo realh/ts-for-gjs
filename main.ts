@@ -1305,7 +1305,10 @@ export class GirModule {
 
     // Represents a record or GObject class or interface as a Typescript class
     private exportClassInternal(e: GirClass, record = false) {
-        if (e.$ && e.$["glib:is-gtype-struct-for"]) {
+        // Gtk has some weird classes that depend on DBus classes from Gio that
+        // aren't exported due to is-gtype-struct-for, so filter them out too.
+        if (e.$ && (e.$["glib:is-gtype-struct-for"] ||
+                (e.$["c:type"] || "").indexOf("_Gtk") === 0)) {
             return []   
         }
         const details = this.getClassDetails(e)
@@ -1497,8 +1500,15 @@ export class GirModule {
             }
 
         if (this.ns.record)
-            for (let e of this.ns.record)
-                out = out.concat(this.exportClassInternal(e, true))
+            for (let e of this.ns.record) {
+                doLog = e._fullSymName === "Gio.DBusProxyClass" ||
+                    e._fullSymName === "Gio.DBusInterfaceSkeletonClass"
+                debLog(`>> Exporting record ${e._fullSymName}`)
+                //out = out.concat(this.exportClassInternal(e, true))
+                const rec = this.exportClassInternal(e, true)
+                out = out.concat(rec)
+
+            }
 
         if (this.ns.union)
             for (let e of this.ns.union)
