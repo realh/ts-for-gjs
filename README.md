@@ -52,3 +52,11 @@ Generate definitions:
 ```bash
 npm run regress
 ```
+
+# Purpose of this fork
+
+The original version used composition instead of inheritance, resulting in
+client code often having to use casts. This was because of differences in how
+function overrides work in Typescript. However, I realised that I could take
+advantage of Typescript's allowing an interface to have the same name as a class
+or object to solve this problem.
