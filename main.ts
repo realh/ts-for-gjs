@@ -1060,8 +1060,6 @@ export class GirModule {
         const [fnMap, explicits] = this.processOverloadableMethods(cls, e => {
             let methods = (e["virtual-method"] || []).map(f => {
                 const desc = this.getFunction(f, "    ", "vfunc_", this)
-                if (desc[0].length)
-                    desc[0][0] = desc[0][0].replace("(", "?(")
                 return desc
             })
             methods = methods.filter(f => f[1] != null)
