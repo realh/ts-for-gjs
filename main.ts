@@ -263,16 +263,23 @@ export class GirModule {
                 }
         }
         let annotateFunctions = (obj: GirClass|null, funcs: GirFunction[]) => {
-            if (funcs) {
-                for (let f of funcs) {
-                    if (!f || !f.$)
-                        continue
-                    let nsName = obj ? obj._fullSymName : this.name
-                    f._fullSymName = `${nsName}.${f.$.name}`
-                    f._module = this
-                    annotateFunctionArguments(f)
-                    annotateFunctionReturn(f)
+            try {
+                if (funcs) {
+                    for (let f of funcs) {
+                        if (!f || !f.$)
+                            continue
+                        let nsName = obj ? obj._fullSymName : this.name
+                        f._fullSymName = `${nsName}.${f.$.name}`
+                        f._module = this
+                        annotateFunctionArguments(f)
+                        annotateFunctionReturn(f)
+                    }
                 }
+            } catch (error) {
+                console.log(error)
+                console.log(`funcs has type ${typeof funcs}:`)
+                console.dir(funcs)
+                throw error
             }
         }
         let annotateVariables = (obj: GirClass|null, vars) => {
@@ -298,7 +305,8 @@ export class GirModule {
         for (let c of objs) {
             c._module = this
             c._fullSymName = `${this.name}.${c.$.name}`
-            annotateFunctions(c, <GirFunction[]>c.constructor || [])
+            let cons = (c.constructor instanceof Array) ? c.constructor : []
+            annotateFunctions(c, cons)
             annotateFunctions(c, c.function || [])
             annotateFunctions(c, c.method || [])
             annotateFunctions(c, c["virtual-method"] || [])
