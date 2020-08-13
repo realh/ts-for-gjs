@@ -1220,6 +1220,31 @@ export class GirModule {
         return ctors
     }
 
+    private isGtypeStructFor(e: GirClass, rec: GirClass) {
+        let isFor = rec.$["glib:is-gtype-struct-for"]
+        return isFor && isFor == e.$.name
+    }
+
+    // Some class/static methods are defined in a separate record which is not
+    // exported, but the methods are available as members of the JS constructor.
+    // In gjs one can use an instance of the object or a JS constructor as the
+    // methods' instance-parameter. See:
+    // https://discourse.gnome.org/t/using-class-methods-like-gtk-widget-class-get-css-name-from-gjs/4001
+    private getClassMethods(e: GirClass) {
+        if (!e.$.name)
+            return []
+        const fName = e.$.name + "Class"
+        let rec = this.ns.record?.find(r => r.$.name == fName)
+        if (!rec || !this.isGtypeStructFor(e, rec)) {
+            rec = this.ns.record?.find(r => this.isGtypeStructFor(e, r))
+            fName == rec?.$.name
+        }
+        if (!rec)
+            return []
+        let methods = rec.method || []
+        return methods.map(m => this.getFunction(m, "    static "))
+    }
+
     private getOtherStaticFunctions(e: GirClass, stat = true,
             targetMod?: GirModule): FunctionDescription[] {
         let fns: FunctionDescription[] = []
@@ -1386,6 +1411,9 @@ export class GirModule {
         }))
         stc = stc.concat(this.processStaticFunctions(e, cls => {
             return this.getOtherStaticFunctions(cls)
+        }))
+        stc = stc.concat(this.processStaticFunctions(e, cls => {
+            return this.getClassMethods(cls)
         }))
         if (stc.length > 0) {
             def.push("    // Static methods and pseudo-constructors")
