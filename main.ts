@@ -1554,9 +1554,15 @@ function exportGjs(outDir: string|null, girModules: { [key: string]: any })
     fs.createWriteStream(`${outDir}/Gjs.d.ts`).write(
 `export namespace byteArray {
     export class ByteArray {
-        constructor(len: number)
+        constructor(lenOrArray: any)    // May be a Uint8Array or any type
+                                        // accepted by its constructor
         toGBytes(): any  // GLib.Bytes?
+        toString(encoding?: string): string
         length: number
+        static get(target: ByteArray, prop: number,
+                receiver?: ByteArray): number
+        static set(target: ByteArray, prop: number, val: number,
+                receiver?: ByteArray): number
     }
     export function fromString(input: string): ByteArray
     export function fromArray(input: number[]): ByteArray
