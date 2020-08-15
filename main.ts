@@ -1563,6 +1563,7 @@ function exportGjs(outDir: string|null, girModules: { [key: string]: any })
                 receiver?: ByteArray): number
         static set(target: ByteArray, prop: number, val: number,
                 receiver?: ByteArray): number
+        _array: Uint8Array
     }
     export function fromString(input: string): ByteArray
     export function fromArray(input: number[]): ByteArray
