@@ -411,7 +411,7 @@ export class GirModule {
             return "any";
 
         if (e.$) {
-            let nullable = this.girBool(e.$.nullable) || this.girBool(e.$["allow-none"])
+            let nullable = this.paramIsNullable(e)
             if (nullable) {
                 nul = ' | null'
             }
@@ -557,6 +557,11 @@ export class GirModule {
         return parseInt(param.$.destroy)
     }
 
+    private paramIsNullable(param: GirVariable) {
+        const a = param.$
+        return a && (a["nullable"] || a["allow-none"] || a["optional"])
+    }
+
     private getParameters(parameters, outArrayLengthIndex: number,
                          targetMod?: GirModule): [ string, string[] ] {
         let def: string[] = []
@@ -592,21 +597,22 @@ export class GirModule {
 
                     let optDirection = param.$.direction
                     if (optDirection) {
-                        if (optDirection == 'out') {
+                        if (optDirection == 'out' || optDirection == 'inout') {
                             outParams.push(`/* ${paramName} */ ${paramType}`)
-                            continue
+                            if (optDirection == 'out')
+                                continue
                         }
                     }
 
-                    let allowNone = param.$["allow-none"] ? "?" : ""
+                    let allowNone = this.paramIsNullable(param) ? "?" : ""
 
-                    if (allowNone) {
+                    if (allowNone.length) {
                         const index = parametersArray.indexOf(param)
                         const following = (parametersArray as GirVariable[]).slice(index)
                             .filter(p => skip.indexOf(param) === -1)
                             .filter(p => p.$.direction !== "out")
 
-                        if (following.some(p => !p.$["allow-none"])) {
+                        if (following.some(p => !this.paramIsNullable(p))) {
                             allowNone = ""
                         }
                     }
