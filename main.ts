@@ -826,7 +826,7 @@ export class GirModule {
             if (dups.hasOwnProperty(parentName)) return
             let parentPtr = this.symTable[parentName]
             if (parentPtr && (parentPtr.prerequisite || recurseObjects)) {
-                // iface's prerequsite is also an interface, or it's
+                // iface's prerequisite is also an interface, or it's
                 // a class and we also want to recurse classes
                 callback(parentPtr)
                 this.forEachInterface(parentPtr, callback, recurseObjects, dups)
@@ -1357,8 +1357,20 @@ export class GirModule {
             if (e.property) {
                 for (let p of e.property) {
                     let [desc, name] = this.getProperty(p, true, true)
-                    def = def.concat(this.checkName(desc, name, constructPropNames)[0])
+                    def = def.concat(this.checkName(desc, name,
+                                constructPropNames)[0])
                 }
+            }
+            if (e.implements) {
+                this.forEachInterface(e, iface => {
+                    if (iface.property) {
+                        for (let p of iface.property) {
+                            let [desc, name] = this.getProperty(p, true, true)
+                            def = def.concat(this.checkName(desc, name,
+                                        constructPropNames)[0])
+                        }
+                    }
+                })
             }
             def.push("}")
         }
