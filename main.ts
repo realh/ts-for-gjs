@@ -850,8 +850,8 @@ export class GirModule {
         return ret
     }
 
-    private checkName(desc: string[], name: string | null, localNames: any):
-            [string[], boolean] {
+    private checkName(desc: string[], name: string | null,
+            localNames: Set<string>): [string[], boolean] {
         if (!desc || desc.length == 0)
             return [[], false]
 
@@ -860,16 +860,16 @@ export class GirModule {
             return [[], false]
         }
 
-        if (localNames[name]) {
+        if (localNames.has(name)) {
             // console.warn(`Name ${name} already defined (${desc})`)
             return [[], false]
         }
 
-        localNames[name] = 1
+        localNames.add(name)
         return [desc, true]
     }
 
-    private processFields(cls: GirClass, localNames: any): string[] {
+    private processFields(cls: GirClass, localNames: Set<string>): string[] {
         let def: string[] = []
         if (cls.field) {
             def.push(`    // Fields of ${cls._fullSymName}`)
@@ -1091,11 +1091,17 @@ export class GirModule {
     // These have to be processed together, because signals add overloads
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
-    private processInstanceMethodsSignalsProperties(cls: GirClass): string[] {
+    private processInstanceMethodsSignalsProperties(cls: GirClass,
+            localNames: Set<string>): string[] {
         const [fnMap, explicits] = this.processOverloadableMethods(cls, e => {
             // This already filters out methods with same name as superclass
             // properties
-            return this.getInstanceMethods(e)
+            let methods = this.getInstanceMethods(e)
+            // Some records in Gst-1.0 have clashes between method and field names
+            if (localNames.size) {
+                methods = methods.filter(f => f[1] && !localNames.has(f[1]))
+            }
+            return methods
         })
         // Add specific signal methods
         const signals = cls["glib:signal"]
@@ -1355,7 +1361,7 @@ export class GirModule {
             if (parentName)
                 ext = `extends ${localParentName}_ConstructProps `
             def.push(`export interface ${name}_ConstructProps ${ext}{`)
-            let constructPropNames = {}
+            let constructPropNames = new Set<string>()
             if (e.property) {
                 for (let p of e.property) {
                     let [desc, name] = this.getProperty(p, true, true)
@@ -1392,14 +1398,14 @@ export class GirModule {
                 parents += " implements " + impl.join(',')
         }
         def.push(`export class ${name}${parents} {`)
-        let localNames = {}
+        let localNames = new Set<string>()
         // Can't export fields for GObjects because names would clash
-        if (record)
+        if (record) {
             def = def.concat(this.processFields(e, localNames))
+        }
 
-        doLog = e._fullSymName == "Gio.Cancellable"
-        def = def.concat(this.processInstanceMethodsSignalsProperties(e))
-        doLog = false
+        def = def.concat(this.processInstanceMethodsSignalsProperties(e,
+                localNames))
         def = def.concat(this.processVirtualMethods(e))
 
         if (isDerivedFromGObject || e.prerequisite) {
