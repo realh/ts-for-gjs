@@ -1266,9 +1266,10 @@ export class GirModule {
         return fns
     }
 
-    private getStaticNew(e: GirClass, targetMod?: GirModule): FunctionDescription {
-        let funcs = this.getStaticConstructors(e, fn => fn === "new", targetMod)
-        return funcs.length ? funcs[0] : [[], null]
+    private getAllStaticFunctions(e: GirClass) {
+        return this.getStaticConstructors(e).concat(
+            this.getOtherStaticFunctions(e)).concat(
+            this.getClassMethods(e))
     }
 
     private getClassDetails(e: GirClass): ClassDetails | null {
@@ -1424,16 +1425,9 @@ export class GirModule {
         def.push("    static name: string")
 
         // Static methods, <constructor> and <function>
-        stc = []
-        stc = stc.concat(this.processStaticFunctions(e, cls => {
-            return this.getStaticConstructors(cls)
-        }))
-        stc = stc.concat(this.processStaticFunctions(e, cls => {
-            return this.getOtherStaticFunctions(cls)
-        }))
-        stc = stc.concat(this.processStaticFunctions(e, cls => {
-            return this.getClassMethods(cls)
-        }))
+        stc = this.processStaticFunctions(e, cls => {
+            return this.getAllStaticFunctions(cls)
+        })
         if (stc.length > 0) {
             def.push("    // Static methods and pseudo-constructors")
             def = def.concat(stc)
