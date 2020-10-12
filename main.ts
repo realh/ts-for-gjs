@@ -1084,7 +1084,7 @@ export class GirModule {
 
     private processStaticFunctions(cls: GirClass,
             getter: (e: GirClass) => FunctionDescription[]): string[] {
-        const [fnMap, explicits] = this.processOverloadableMethods(cls, getter)
+        const [fnMap, explicits] = this.processOverloadableMethods(cls, getter, true)
         return this.exportOverloadableMethods(fnMap, explicits)
     }
 
@@ -1237,12 +1237,13 @@ export class GirModule {
     // methods' instance-parameter. See:
     // https://discourse.gnome.org/t/using-class-methods-like-gtk-widget-class-get-css-name-from-gjs/4001
     private getClassMethods(e: GirClass) {
-        if (!e.$.name)
+        if (!e.$.name || !e._module?.ns) {
             return []
+        }
         const fName = e.$.name + "Class"
-        let rec = this.ns.record?.find(r => r.$.name == fName)
+        let rec = e._module.ns.record?.find(r => r.$.name == fName)
         if (!rec || !this.isGtypeStructFor(e, rec)) {
-            rec = this.ns.record?.find(r => this.isGtypeStructFor(e, r))
+            rec = e._module.ns.record?.find(r => this.isGtypeStructFor(e, r))
             fName == rec?.$.name
         }
         if (!rec)
