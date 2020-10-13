@@ -227,6 +227,12 @@ export class Config {
             ) {
                 config.modules = configFile.config.modules
             }
+            if (
+                config.experimentalInheritance === Config.defaultCliFlags.experimentalInheritance.default &&
+                typeof configFile.config.experimentalInheritance === 'boolean'
+            ) {
+                config.experimentalInheritance = configFile.config.experimentalInheritance
+            }
         }
         return config
     }
