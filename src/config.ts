@@ -28,6 +28,7 @@ export class Config {
         ignore: [],
         verbose: true,
         ignoreConflicts: false,
+        experimentalInheritance: false,
     }
 
     /**
@@ -77,6 +78,10 @@ export class Config {
         ignoreConflicts: flags.boolean({
             description: 'Do not ask for package versions if multiple versions are found',
             default: Config.defaults.ignoreConflicts,
+        }),
+        experimentalInheritance: flags.boolean({
+            description: 'Represent inheritance relationships in output',
+            default: Config.defaults.experimentalInheritance,
         }),
         print: flags.boolean({
             char: 'p',
@@ -170,6 +175,7 @@ export class Config {
             buildType: flags.buildType as BuildType | undefined,
             verbose: flags.verbose,
             ignoreConflicts: flags.ignoreConflicts,
+            experimentalInheritance: flags.experimentalInheritance,
             pretty: flags.pretty,
             print: flags.print,
             outdir: flags.outdir,
