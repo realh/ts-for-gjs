@@ -28,7 +28,7 @@ export class Config {
         ignore: [],
         verbose: true,
         ignoreConflicts: false,
-        experimentalInheritance: false,
+        inheritance: false,
     }
 
     /**
@@ -79,9 +79,9 @@ export class Config {
             description: 'Do not ask for package versions if multiple versions are found',
             default: Config.defaults.ignoreConflicts,
         }),
-        experimentalInheritance: flags.boolean({
-            description: 'Represent inheritance relationships in output',
-            default: Config.defaults.experimentalInheritance,
+        inheritance: flags.boolean({
+            description: 'Represent inheritance relationships in output (experimental)',
+            default: Config.defaults.inheritance,
         }),
         print: flags.boolean({
             char: 'p',
@@ -158,6 +158,7 @@ export class Config {
             pretty: config.pretty,
             verbose: config.verbose,
             buildType: config.buildType || defaultBuildType,
+            inheritance: config.inheritance
         }
         return generateConfig
     }
@@ -175,7 +176,7 @@ export class Config {
             buildType: flags.buildType as BuildType | undefined,
             verbose: flags.verbose,
             ignoreConflicts: flags.ignoreConflicts,
-            experimentalInheritance: flags.experimentalInheritance,
+            inheritance: flags.inheritance,
             pretty: flags.pretty,
             print: flags.print,
             outdir: flags.outdir,
@@ -228,10 +229,10 @@ export class Config {
                 config.modules = configFile.config.modules
             }
             if (
-                config.experimentalInheritance === Config.defaultCliFlags.experimentalInheritance.default &&
-                typeof configFile.config.experimentalInheritance === 'boolean'
+                config.inheritance === Config.defaultCliFlags.inheritance.default &&
+                typeof configFile.config.inheritance === 'boolean'
             ) {
-                config.experimentalInheritance = configFile.config.experimentalInheritance
+                config.inheritance = configFile.config.inheritance
             }
         }
         return config
