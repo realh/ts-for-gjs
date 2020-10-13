@@ -1213,6 +1213,39 @@ export class GirModule {
         return def
     }
 
+    private forEachImplementedLocalName(girClass: GirClass, callback: (name: string) => void) {
+        if (girClass.implements) {
+            for (const i of girClass.implements) {
+                let name = i.$.name
+                if (!name) continue
+                let fullName
+                if (name.indexOf('.') >= 0) {
+                    fullName = name
+                    const [mod, local] = name.split('.')
+                    if (mod == this.name)
+                        name = local
+                } else {
+                    fullName = (this.name || '') + '.' + name
+                }
+                if (!this.interfaceIsDuplicate(girClass, fullName))
+                    callback(name)
+            }
+        }
+    }
+
+    // TS classes implicitly have an interface with the same name so we can use
+    // them in implements etc even though they're declared as classes
+    private getInheritance(girClass: GirClass, localParentName?: string) {
+        let inherits = localParentName ? `extends ${localParentName} ` : ''
+        if (girClass.implements) {
+            const impl: string[] = []
+            this.forEachImplementedLocalName(girClass, n => impl.push(n))
+            if (impl.length)
+                inherits += `implements ${impl.join(',')} `
+        }
+        return inherits
+    }
+
     public exportEnumeration(e: GirEnumeration): string[] {
         const def: string[] = []
 
@@ -1274,41 +1307,54 @@ export class GirModule {
         // Properties for construction
         def.push(...this.generateConstructPropsInterface(girClass, name, qualifiedParentName, localParentName))
 
+        // Superclass and interfaces
+        let inherits = this.config.inheritance ? this.getInheritance(girClass, localParentName) : ""
+
         // START CLASS
         if (isAbstract) {
-            def.push(`export abstract class ${name} {`)
+            def.push(`export abstract class ${name} ${inherits}{`)
         } else {
-            def.push(`export class ${name} {`)
+            def.push(`export class ${name} ${inherits}{`)
         }
 
         const localNames: LocalNames = {}
         const propertyNames: string[] = []
 
-        // Can't export fields for GObjects because names would clash
-        if (record) def.push(...this.processFields(girClass, localNames))
-
-        // Copy properties from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) =>
-            def.push(...this.processProperties(cls, localNames, propertyNames)),
-        )
-        // Copy properties from implemented interface
+        const inheritance = this.config.inheritance
+        if (inheritance) {
+            def.push(...this.processProperties(girClass, localNames, propertyNames))
+        } else {
+            // Copy properties from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) =>
+                def.push(...this.processProperties(cls, localNames, propertyNames)),
+            )
+        }
+        // Copy properties from implemented interfaces
         this.forEachInterface(girClass, (cls) => def.push(...this.processProperties(cls, localNames, propertyNames)))
-        // Copy fields from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processFields(cls, localNames)))
-        // Copy methods from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
+        if (inheritance) {
+            def.push(...this.processFields(girClass, localNames))
+            def.push(...this.processMethods(girClass, localNames))
+        } else {
+            // Copy fields from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processFields(cls, localNames)))
+            // Copy methods from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
+        }
         // Copy methods from implemented interfaces
         this.forEachInterface(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
-        // Copy virtual methods from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processVirtualMethods(cls)))
-        // Copy signals from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processSignals(cls, name)))
+        if (inheritance) {
+            def.push(...this.processVirtualMethods(girClass))
+            def.push(...this.processSignals(girClass, name))
+        } else {
+            // Copy virtual methods from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processVirtualMethods(cls)))
+            // Copy signals from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processSignals(cls, name)))
+        }
         // Copy signals from implemented interfaces
         this.forEachInterface(girClass, (cls) => def.push(...this.processSignals(cls, name)))
 
         def.push(...this.generateSignalMethods(girClass, propertyNames, name))
-
-        // TODO: Records have fields
 
         // Static side: default constructor
         def.push(...this.generateConstructorAndStaticMethods(girClass, name))
