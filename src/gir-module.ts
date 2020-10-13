@@ -833,19 +833,6 @@ export class GirModule {
         return def
     }
 
-    private stripParamNames(f: string, ignoreTail = false) {
-        const g = f
-        f = f.replace(this.commentRegExp, '')
-        const lb = f.split('(', 2)
-        if (lb.length < 2) console.log(`Bad function definition ${g}`)
-        const rb = lb[1].split(')')
-        const tail = ignoreTail ? '' : rb[rb.length - 1]
-        let params = rb.slice(0, rb.length - 1).join(')')
-        params = params.replace(this.paramRegExp, ':')
-        params = params.replace(this.optParamRegExp, '?:')
-        return `${lb[0]}(${params})${tail}`
-    }
-
     /**
      * Some classes implement interfaces which are also implemented by a superclass
      * and we need to exclude those in some circumstances
@@ -906,7 +893,7 @@ export class GirModule {
      * @see https://discourse.gnome.org/t/using-class-methods-like-gtk-widget-class-get-css-name-from-gjs/4001
      * @param girClass
      */
-    private getClassMethods(girClass: GirClass) {
+    private getClassMethods(girClass: GirClass): FunctionDescription[] {
         if (!girClass.$.name) return []
         const fName = girClass.$.name + 'Class'
         let rec = this.ns.record?.find((r) => r.$.name == fName)
@@ -967,15 +954,6 @@ export class GirModule {
             localParentName = parentModName == mod.name ? parentName : qualifiedParentName
         }
         return { name, qualifiedName, parentName, qualifiedParentName, localParentName }
-    }
-
-    /**
-     * Returns true if the function definitions in f1 and f2 have equivalent signatures
-     * @param f1
-     * @param f2
-     */
-    private functionSignaturesMatch(f1: string, f2: string) {
-        return this.stripParamNames(f1) == this.stripParamNames(f2)
     }
 
     /**
@@ -1246,6 +1224,172 @@ export class GirModule {
         return inherits
     }
 
+    private addSignalMethod(methods: FunctionDescription[], name: string, desc: string[]) {
+        const old = methods.find((e) => e[1] === name)
+        if (old) {
+            for (const ln of desc) {
+                if (!old[0].find((e) => e === ln)) {
+                    old[0].push(ln)
+                }
+            }
+        } else {
+            methods.push([desc, name])
+        }
+    }
+
+    private getInstanceMethods(cls: GirClass): FunctionDescription[] {
+        // Some methods have the same name as properties, give priority to properties
+        // by filtering out those names
+        const dash = /-/g
+        const propNames = new Set<string>()
+        this.traverseInheritanceTree(cls, (e) => {
+            this.forEachInterfaceAndSelf(e, (propSrc) => {
+                for (const p of propSrc.property || []) {
+                    if (p.$.name) propNames.add(p.$.name.replace(dash, '_'))
+                }
+            })
+        })
+        const methodNames = (cls.method || []).filter((m) => {
+            if (propNames.has(m.$.name)) {
+                return false
+            }
+            return m.$.name != null
+        })
+        const methods = methodNames.map((f) => this.getFunction(f, '    ', '')).filter((f) => f[1] != null)
+
+        // GObject.Object signal methods aren't introspected.
+        if (cls._fullSymName === 'GObject.Object') {
+            this.addSignalMethod(methods, 'connect', [
+                '    connect<T extends Function>(sigName: string, callback: T): number',
+            ])
+            this.addSignalMethod(methods, 'connect_after', [
+                '    connect_after<T extends Function>(sigName: string, callback: T): number',
+            ])
+            this.addSignalMethod(methods, 'disconnect', ['    disconnect(tag: number): void'])
+            this.addSignalMethod(methods, 'emit', ['    emit(sigName: string, ...args: any[]): void'])
+        }
+        return methods
+    }
+
+    private stripParamNames(f: string, ignoreTail = false) {
+        const g = f
+        f = f.replace(this.commentRegExp, '')
+        const lb = f.split('(', 2)
+        if (lb.length < 2) console.log(`Bad function definition ${g}`)
+        const rb = lb[1].split(')')
+        const tail = ignoreTail ? '' : rb[rb.length - 1]
+        let params = rb.slice(0, rb.length - 1).join(')')
+        params = params.replace(this.paramRegExp, ':')
+        params = params.replace(this.optParamRegExp, '?:')
+        return `${lb[0]}(${params})${tail}`
+    }
+
+    // Returns true if the function definitions in f1 and f2 have equivalent
+    // signatures
+    private functionSignaturesMatch(f1: string, f2: string) {
+        return this.stripParamNames(f1) == this.stripParamNames(f2)
+    }
+
+    // These have to be processed together, because signals add overloads
+    // for connect() etc (including property notifications) and prop names may
+    // clash with method names, meaning one or the other has to be removed
+    private processInstanceMethodsSignalsProperties(cls: GirClass, localNames: LocalNames): string[] {
+        const [fnMap, explicits] = this.processOverloadableMethods(cls, (e) => {
+            // This already filters out methods with same name as superclass
+            // properties
+            let methods = this.getInstanceMethods(e)
+            // Some records in Gst-1.0 have clashes between method and field names
+            methods = methods.filter((f) => f[1] && !localNames.hasOwnProperty(f[1]))
+            return methods
+        })
+        // Add specific signal methods
+        const signals = cls['glib:signal']
+        if (signals && signals.length) {
+            explicits.add('connect')
+            explicits.add('connect_after')
+            explicits.add('emit')
+            for (const s of signals) {
+                const [retType, outArrayLengthIndex] = this.getReturnType(s)
+                let [params] = this.getParameters(outArrayLengthIndex, s.parameters)
+                if (params.length > 0) params = ', ' + params
+                const callback = `(obj: ${cls.$.name}${params}) => ${retType}`
+                const signature = `(sigName: "${s.$.name}", callback: ${callback}): number`
+                this.mergeOverloadableFunctions(fnMap, [[`    connect${signature}`], 'connect'], true)
+                this.mergeOverloadableFunctions(fnMap, [[`    connect_after${signature}`], 'connect_after'], true)
+                this.mergeOverloadableFunctions(
+                    fnMap,
+                    [[`    emit(sigName: "${s.$.name}"${params}): void`], 'emit'],
+                    true,
+                )
+            }
+        }
+        let def: string[] = []
+        // Although we've removed methods with the same name as an inherited
+        // property we still need to filter out properties with the same
+        // name as an inherited method.
+        const dash = /-/g
+        // The value indicates whether the property belongs to
+        // cls (1 if cls only, 2 if also iface) or an interface (0)
+        const propsMap: Map<string, number> = new Map()
+        let props: GirVariable[] = []
+        let self = true
+        this.forEachInterfaceAndSelf(cls, (e) => {
+            props = props.concat(
+                (e.property || []).filter((p) => {
+                    if (!p.$.name) return false
+                    const xName = p.$.name.replace(dash, '_')
+                    const mapped = propsMap.get(p.$.name)
+                    if (fnMap.has(xName)) {
+                        if (self) {
+                            console.warn(
+                                `Hiding property ${cls._fullSymName}.${xName} ` +
+                                    'due to a clash with an inherited method',
+                            )
+                        }
+                        return false
+                    } else if (mapped) {
+                        if (mapped === 1) {
+                            propsMap.set(p.$.name, 2)
+                        }
+                        return false
+                    } else {
+                        propsMap.set(p.$.name, self ? 1 : 0)
+                        return true
+                    }
+                }),
+            )
+            self = false
+        })
+        if (props.length) {
+            let prefix = 'GObject.'
+            if (this.name == 'GObject') prefix = ''
+            def.push('    // Properties')
+            for (const p of props) {
+                // Some properties are construct-only overloads of
+                // an implemnted interface property, so we use the self
+                // flag from propsMap to force them to be included
+                const [desc, name, origName] = this.getProperty(p, propsMap.get(p.$.name || '') === 2, false)
+                def = def.concat(desc)
+                // Each property also has a signal
+                if (origName) {
+                    const sigName = `sigName: "notify::${origName}"`
+                    const params = `pspec: ${prefix}ParamSpec`
+                    const callback = `(${params}) => void`
+                    const signature = `(${sigName}, obj: ${cls.$.name}, ` + `callback: ${callback}): number`
+                    this.mergeOverloadableFunctions(fnMap, [[`    connect${signature}`], 'connect'], true)
+                    this.mergeOverloadableFunctions(fnMap, [[`    connect_after${signature}`], 'connect_after'], true)
+                    this.mergeOverloadableFunctions(fnMap, [[`    emit(${sigName}, ${params}): void`], 'emit'], true)
+                }
+            }
+        }
+        const mDef = this.exportOverloadableMethods(fnMap, explicits)
+        if (mDef.length) {
+            def.push(`    // Instance and signal methods`)
+            def = def.concat(mDef)
+        }
+        return def
+    }
+
     public exportEnumeration(e: GirEnumeration): string[] {
         const def: string[] = []
 
@@ -1322,37 +1466,28 @@ export class GirModule {
 
         const inheritance = this.config.inheritance
         if (inheritance) {
-            def.push(...this.processProperties(girClass, localNames, propertyNames))
+            def.push(...this.processInstanceMethodsSignalsProperties(girClass,
+                        localNames))
+            def.push(...this.processVirtualMethods(girClass))
         } else {
             // Copy properties from inheritance tree
             this.traverseInheritanceTree(girClass, (cls) =>
                 def.push(...this.processProperties(cls, localNames, propertyNames)),
             )
-        }
-        // Copy properties from implemented interfaces
-        this.forEachInterface(girClass, (cls) => def.push(...this.processProperties(cls, localNames, propertyNames)))
-        if (inheritance) {
-            def.push(...this.processFields(girClass, localNames))
-            def.push(...this.processMethods(girClass, localNames))
-        } else {
-            // Copy fields from inheritance tree
+            // Copy properties from implemented interfaces
+            this.forEachInterface(girClass, (cls) => def.push(...this.processProperties(cls, localNames, propertyNames)))
             this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processFields(cls, localNames)))
             // Copy methods from inheritance tree
             this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
-        }
-        // Copy methods from implemented interfaces
-        this.forEachInterface(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
-        if (inheritance) {
-            def.push(...this.processVirtualMethods(girClass))
-            def.push(...this.processSignals(girClass, name))
-        } else {
+            // Copy methods from implemented interfaces
+            this.forEachInterface(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
             // Copy virtual methods from inheritance tree
             this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processVirtualMethods(cls)))
             // Copy signals from inheritance tree
             this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processSignals(cls, name)))
+            // Copy signals from implemented interfaces
+            this.forEachInterface(girClass, (cls) => def.push(...this.processSignals(cls, name)))
         }
-        // Copy signals from implemented interfaces
-        this.forEachInterface(girClass, (cls) => def.push(...this.processSignals(cls, name)))
 
         def.push(...this.generateSignalMethods(girClass, propertyNames, name))
 
