@@ -47,6 +47,7 @@ export default class Generate extends Command {
         pretty: Config.defaultCliFlags.pretty,
         verbose: Config.defaultCliFlags.verbose,
         ignoreConflicts: Config.defaultCliFlags.ignoreConflicts,
+        experimentalInheritance: Config.defaultCliFlags.experimentalInheritance,
         print: Config.defaultCliFlags.print,
         configName: Config.defaultCliFlags.configName,
     }
@@ -63,7 +64,7 @@ export default class Generate extends Command {
         const config = await Config.load((flags as unknown) as ConfigFlags, argv)
 
         if (argv.length === 0) {
-            this.error("Need to pass an argument via 'ts-for-git generate [arguments here]'!")
+            this.error("Need to pass an argument via 'ts-for-gjs generate [arguments here]'!")
         }
 
         for (const i in config.environments) {
