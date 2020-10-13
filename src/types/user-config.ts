@@ -10,7 +10,7 @@ export interface UserConfig {
     girDirectories: string[]
     verbose: boolean
     ignoreConflicts: boolean
-    experimentalInheritance: boolean
+    inheritance: boolean
     print: boolean
     pretty: boolean
     modules: string[]

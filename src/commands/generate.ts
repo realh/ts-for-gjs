@@ -35,6 +35,9 @@ export default class Generate extends Command {
         '',
         '# Generate .d.ts. files but not for Gtk-3.0 and xrandr-1.3',
         `${Config.appName} generate --ignore=Gtk-3.0 xrandr-1.3`,
+        '',
+        "# Represent GObject's inheritance model in classes and interfaces (experimental)",
+        `${Config.appName} generate --inheritance '*'`,
     ]
 
     static flags = {
@@ -47,7 +50,7 @@ export default class Generate extends Command {
         pretty: Config.defaultCliFlags.pretty,
         verbose: Config.defaultCliFlags.verbose,
         ignoreConflicts: Config.defaultCliFlags.ignoreConflicts,
-        experimentalInheritance: Config.defaultCliFlags.experimentalInheritance,
+        inheritance: Config.defaultCliFlags.inheritance,
         print: Config.defaultCliFlags.print,
         configName: Config.defaultCliFlags.configName,
     }
