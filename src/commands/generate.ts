@@ -37,7 +37,7 @@ export default class Generate extends Command {
         `${Config.appName} generate --ignore=Gtk-3.0 xrandr-1.3`,
         '',
         "# Represent GObject's inheritance model in classes and interfaces (experimental)",
-        `${Config.appName} generate --inheritance '*'`,
+        `${Config.appName} generate '*' --inheritance`,
     ]
 
     static flags = {
