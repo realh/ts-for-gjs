@@ -15,6 +15,8 @@ export interface GirFunction extends TsForGjsExtended {
         when?: 'first' | 'last'
         detailed?: GirBoolean
         throws?: GirBoolean
+        deprecated?: GirBoolean
+        'deprecated-version'?: string
     }
     doc?: GirDoc[]
     parameters?: GirParameter[]
