@@ -158,7 +158,7 @@ export class Config {
             pretty: config.pretty,
             verbose: config.verbose,
             buildType: config.buildType || defaultBuildType,
-            inheritance: config.inheritance
+            inheritance: config.inheritance,
         }
         return generateConfig
     }
