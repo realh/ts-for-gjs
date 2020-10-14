@@ -1,1 +1,1 @@
-export type FunctionDescription = [string[], string | null] & { deprecated?: boolean}
+export type FunctionDescription = [string[], string | null]
