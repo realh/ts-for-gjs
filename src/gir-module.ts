@@ -1307,13 +1307,7 @@ export class GirModule {
             return comment.test(f2)
         else if (comment.test(f2))
             return false
-        try {
-            return this.stripParamNames(f1) == this.stripParamNames(f2)
-        } catch (e) {
-            console.log(`Error trying to compare signatures of:\n${f1}\n${f2}`)
-            console.error(e)
-            throw(e)
-        }
+        return this.stripParamNames(f1) == this.stripParamNames(f2)
     }
 
     private getSignals(cls: GirClass): FunctionDescription[] {
