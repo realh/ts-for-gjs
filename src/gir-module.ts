@@ -917,6 +917,23 @@ export class GirModule {
         return fns
     }
 
+    private localName(name: string | GirClass) {
+        let mod: GirModule
+        if (typeof name !== "string") {
+            mod = name._module ? name._module : this
+            name = this.transformation.transformClassName(name.$.name)
+            if (mod === this)
+                return name
+        }
+        if (name.indexOf('.') < 0)
+            return name
+        let modName
+        [modName, name] = name.split('.')
+        if (modName != this.name)
+            name = modName + '.' + name
+        return name
+    }
+
     private getClassDetails(girClass: GirClass): ClassDetails | null {
         if (!girClass || !girClass.$) return null
         const mod: GirModule = girClass._module ? girClass._module : this
@@ -1316,15 +1333,43 @@ export class GirModule {
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
     private processInstanceMethodsSignalsProperties(cls: GirClass, localNames: LocalNames, className: string): string[] {
+        // Methods
         const [fnMap, explicits] = this.processOverloadableMethods(cls, (e) => {
             // This already filters out methods with same name as superclass
             // properties
             let methods = this.getInstanceMethods(e)
             // Some records in Gst-1.0 have clashes between method and field names
-            methods = methods.filter((f) => f[1] && !Object.prototype.hasOwnProperty.call(localNames, f[1]))
+            methods = methods.filter((f) => {
+                if (!f[1])
+                    return false
+                return this.checkName(f[0], f[1], localNames)[1]
+            })
+            if (methods.length)
+                methods[0][0].unshift(`    /* Methods of ${e._fullSymName} */`)
             return methods
         })
-        let def: string[] = this.exportOverloadableMethods(fnMap, explicits)
+        const def: string[] = this.exportOverloadableMethods(fnMap, explicits)
+        // ISTR encountering some class(es) with their own connect method
+        const explicitConnect = explicits.has("connect")
+        const explicitDisconnect = explicits.has("disconnect")
+        // Properties
+        const propertyNames: string[] = []
+        this.forEachInterfaceAndSelf(cls, (e) => {
+            def.push(...this.processProperties(e, localNames, propertyNames))
+        })
+        // Signals
+        const signals: string[] = []
+        this.forEachInterfaceAndSelf(cls, (e) => {
+            signals.push(...this.processSignals(e, className))
+            signals.push(...this.generateSignalMethods(e, propertyNames,
+                        this.localName(e)))
+        })
+        if (signals.length || explicitConnect || explicitDisconnect) {
+            signals.push('    /* Generic signal methods */')
+            signals.push(...TemplateProcessor.generateGeneralSignalMethods(this.config.environment, 1,
+                        explicitDisconnect || (this.name === "GObject" && cls.$.name === "Object")))
+        }
+        def.push(...signals)
         return def
     }
 
