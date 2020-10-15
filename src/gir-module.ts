@@ -1083,7 +1083,8 @@ export class GirModule {
                     ),
                 )
             }
-            def.push(...TemplateProcessor.generateGeneralSignalMethods(this.config.environment))
+            def.push(...TemplateProcessor.generateGeneralSignalMethods(this.config.environment,
+                    1, this.name === "GObject" && cls.$.name === "Object"))
         }
         return def
     }
@@ -1265,17 +1266,6 @@ export class GirModule {
         })
         const methods = methodNames.map((f) => this.getFunction(f, '    ', '')).filter((f) => f[1] != null)
 
-        // GObject.Object signal methods aren't introspected.
-        if (cls._fullSymName === 'GObject.Object') {
-            this.addSignalMethod(methods, 'connect', [
-                '    connect<T extends Function>(sigName: string, callback: T): number',
-            ])
-            this.addSignalMethod(methods, 'connect_after', [
-                '    connect_after<T extends Function>(sigName: string, callback: T): number',
-            ])
-            this.addSignalMethod(methods, 'disconnect', ['    disconnect(tag: number): void'])
-            this.addSignalMethod(methods, 'emit', ['    emit(sigName: string, ...args: any[]): void'])
-        }
         return methods
     }
 
@@ -1326,32 +1316,20 @@ export class GirModule {
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
     private processInstanceMethodsSignalsProperties(cls: GirClass, localNames: LocalNames, className: string): string[] {
-        let hasSignals = false
         const [fnMap, explicits] = this.processOverloadableMethods(cls, (e) => {
             // This already filters out methods with same name as superclass
             // properties
             let methods = this.getInstanceMethods(e)
             // Some records in Gst-1.0 have clashes between method and field names
             methods = methods.filter((f) => f[1] && !Object.prototype.hasOwnProperty.call(localNames, f[1]))
-            // Add specific signal methods
-            const signals = this.processSignals(e, className)
-            if (signals.length) {
-                // First line is a comment
-                signals.shift()
-            }
-            // Also "notify" signals for properties
-            if (e.property?.length) {
-                const propNames = e.property.map(p => p.$.name).filter(p => p != null)
-                // tsc doesn't realise nulls were filtered out, so need to cast
-                const notifs = this.generateSignalMethods(e, <string[]>propNames, className)
-                signals.push(...notifs)
-            }
-            if (signals.length) {
-                hasSignals = true
-                methods.push(...this.descriptionsFromFunctions(signals))
-            }
             return methods
         })
+        let def: string[] = this.exportOverloadableMethods(fnMap, explicits)
+        return def
+    }
+
+    /*
+        let hasSignals = false
         if (hasSignals) {
             explicits.add('connect')
             explicits.add('connect_after')
@@ -1423,6 +1401,7 @@ export class GirModule {
         }
         return def
     }
+    */
 
     public exportEnumeration(e: GirEnumeration): string[] {
         const def: string[] = []

@@ -113,21 +113,23 @@ export class TemplateProcessor {
         return result
     }
 
-    public static generateGeneralSignalMethods(environment: Environment, identCount = 1): string[] {
+    public static generateGeneralSignalMethods(environment: Environment, identCount = 1, disconnect = false): string[] {
         const result: string[] = []
         const ident = this.generateIndent(identCount)
         result.push(
-            `${ident}connect(sigName: string, callback: any): number`,
-            `${ident}connect_after(sigName: string, callback: any): number`,
+            `${ident}connect<T extends Function>(sigName: string, callback: T): number`,
+            `${ident}connect_after<T extends Function>(sigName: string, callback: T): number`,
             `${ident}emit(sigName: string, ...args: any[]): void`,
-            `${ident}disconnect(id: number): void`,
         )
+        // disconnect() only needs to be declared for GObject.Object
+        if (disconnect)
+            result.push(`${ident}disconnect(id: number): void`)
 
         if (environment === 'node') {
             result.push(
-                `${ident}on(sigName: string, callback: any): NodeJS.EventEmitter`,
-                `${ident}once(sigName: string, callback: any): NodeJS.EventEmitter`,
-                `${ident}off(sigName: string, callback: any): NodeJS.EventEmitter`,
+                `${ident}on<T extends Function>(sigName: string, callback: T): NodeJS.EventEmitter`,
+                `${ident}once<T extends Function>(sigName: string, callback: T): NodeJS.EventEmitter`,
+                `${ident}off<T extends Function>(sigName: string, callback: T): NodeJS.EventEmitter`,
             )
         }
         return result
