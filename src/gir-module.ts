@@ -1302,7 +1302,18 @@ export class GirModule {
     // Returns true if the function definitions in f1 and f2 have equivalent
     // signatures
     private functionSignaturesMatch(f1: string, f2: string) {
-        return this.stripParamNames(f1) == this.stripParamNames(f2)
+        const comment = /^\s*\//
+        if (comment.test(f1))
+            return comment.test(f2)
+        else if (comment.test(f2))
+            return false
+        try {
+            return this.stripParamNames(f1) == this.stripParamNames(f2)
+        } catch (e) {
+            console.log(`Error trying to compare signatures of:\n${f1}\n${f2}`)
+            console.error(e)
+            throw(e)
+        }
     }
 
     private getSignals(cls: GirClass): FunctionDescription[] {
@@ -1342,12 +1353,20 @@ export class GirModule {
             methods = methods.filter((f) => {
                 if (!f[1])
                     return false
-                return this.checkName(f[0], f[1], localNames)[1]
+                const result = this.checkName(f[0], f[1], localNames)[1]
+                // We don't actually want to add methods to localNames yet
+                // because some names need to be duplicated for overloading
+                if (result)
+                    delete localNames[f[1]]
+                return result
             })
             if (methods.length)
                 methods[0][0].unshift(`    /* Methods of ${e._fullSymName} */`)
             return methods
         })
+        for (const n of explicits) {
+            localNames[n] = true
+        }
         const def: string[] = this.exportOverloadableMethods(fnMap, explicits)
         // ISTR encountering some class(es) with their own connect method
         const explicitConnect = explicits.has("connect")
