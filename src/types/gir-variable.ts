@@ -2,8 +2,8 @@ import { TsForGjsExtended } from './ts-for-gjs-extended'
 import { GirDoc } from './gir-doc'
 import { GirType } from './gir-type'
 import { GirArray } from './gir-array'
-import { GirBoolean } from './gir-boolean'
 import { GirParameter } from './gir-parameter'
+import { GirBoolean } from './gir-boolean'
 
 // Declaring these two together is the easiest way to prevent circular
 // imports
@@ -30,8 +30,8 @@ export interface GirVariable extends TsForGjsExtended {
     doc?: GirDoc[]
     type?: GirType[]
     array?: GirArray[]
-    varargs?: string[]
     callback?: GirFunction[]
+    varargs?: string[]
 }
 
 export interface GirFunction extends TsForGjsExtended {
