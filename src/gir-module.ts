@@ -1119,7 +1119,7 @@ export class GirModule {
         return this.exportOverloadableMethods(fnMap, explicits)
     }
 
-    private generateSignalMethods(cls: GirClass, propertyNames: string[], callbackObjectName: string): string[] {
+    private generateNotifyMethods(cls: GirClass, propertyNames: string[], callbackObjectName: string): string[] {
         const def: string[] = []
         const isDerivedFromGObject = this.isDerivedFromGObject(cls)
         if (isDerivedFromGObject) {
@@ -1135,10 +1135,13 @@ export class GirModule {
                     ),
                 )
             }
-            def.push(...TemplateProcessor.generateGeneralSignalMethods(this.config.environment,
-                    1, this.name === "GObject" && cls.$.name === "Object"))
         }
         return def
+    }
+
+    private generateGeneralSignalMethods(girClass: GirClass): string[] {
+        return TemplateProcessor.generateGeneralSignalMethods(this.config.environment,
+                1, this.name === "GObject" && girClass.$.name === "Object")
     }
 
     /**
@@ -1409,13 +1412,12 @@ export class GirModule {
         const signals: string[] = []
         this.forEachInterfaceAndSelf(cls, (e) => {
             signals.push(...this.processSignals(e, className))
-            signals.push(...this.generateSignalMethods(e, propertyNames,
+            signals.push(...this.generateNotifyMethods(e, propertyNames,
                         this.localName(e)))
         })
         if (signals.length || explicitConnect || explicitDisconnect) {
             signals.push('    /* Generic signal methods */')
-            signals.push(...TemplateProcessor.generateGeneralSignalMethods(this.config.environment, 1,
-                        explicitDisconnect || (this.name === "GObject" && cls.$.name === "Object")))
+            signals.push(...this.generateGeneralSignalMethods(cls))
         }
         def.push(...signals)
         return def
@@ -1507,7 +1509,7 @@ export class GirModule {
             )
             // Copy properties from implemented interfaces
             this.forEachInterface(girClass, (cls) => def.push(...this.processProperties(cls, localNames, propertyNames)))
-            def.push(...this.generateSignalMethods(girClass, propertyNames, name))
+            def.push(...this.generateNotifyMethods(girClass, propertyNames, name))
             this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processFields(cls, localNames)))
             // Copy methods from inheritance tree
             this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
