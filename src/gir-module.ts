@@ -29,6 +29,8 @@ import {
     ClassDetails,
 } from './types'
 
+const signalMethods = ['connect', 'connect_after', 'disconnect', 'emit']
+
 /**
  * In gjs all classes have a static name property but the classes listed below already have a static name property
  */
@@ -1077,6 +1079,13 @@ export class GirModule {
     ): [FunctionMap, Set<string>] {
         const fnMap: FunctionMap = new Map()
         const explicits = new Set<string>()
+        if (!statics && cls._fullSymName != 'GObject.Object') {
+            for (const fn of signalMethods) {
+                explicits.add(fn)
+                const indent = TemplateProcessor.generateIndent(1)
+                fnMap.set(fn, [`${indent}// WARNING: Name clash, use ...prototype.${fn}.call(this, ...)`])
+            }
+        }
         const funcs = getMethods(cls)
         this.addOverloadableFunctions(fnMap, explicits, funcs, true)
         // Have to implement methods from cls' interfaces
@@ -1111,6 +1120,15 @@ export class GirModule {
                 })
             }
         })
+        // If there were no clashes with the signal methods they should be removed from results
+        if (!statics && cls._fullSymName != 'GObject.Object') {
+            for (const fn of signalMethods) {
+                if ((fnMap.get(fn)?.length || 0) <= 1) {
+                    explicits.delete(fn)
+                    fnMap.delete(fn)
+                }
+            }
+        }
         return [fnMap, explicits]
     }
 
@@ -1372,6 +1390,16 @@ export class GirModule {
         })
     }
 
+    private processSelfAndInterfaceSignals(cls: GirClass, propertyNames: string[]): string[] {
+        const signals: string[] = []
+        this.forEachInterfaceAndSelf(cls, (e) => {
+            const clsName = this.localName(e)
+            signals.push(...this.processSignals(e, clsName))
+            signals.push(...this.generateNotifyMethods(e, propertyNames, clsName))
+        })
+        return signals
+    }
+
     // These have to be processed together, because signals add overloads
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
@@ -1400,22 +1428,32 @@ export class GirModule {
             localNames[n] = true
         }
         const def: string[] = this.exportOverloadableMethods(fnMap, explicits)
-        // ISTR encountering some class(es) with their own connect method
-        const explicitConnect = explicits.has("connect")
-        const explicitDisconnect = explicits.has("disconnect")
+        let sigClash = false
+        for (const fn of signalMethods) {
+            if (explicits.has(fn)) {
+                sigClash = true
+                break
+            }
+        }
         // Properties
         const propertyNames: string[] = []
         this.forEachInterfaceAndSelf(cls, (e) => {
             def.push(...this.processProperties(e, localNames, propertyNames))
         })
         // Signals
-        const signals: string[] = []
-        this.forEachInterfaceAndSelf(cls, (e) => {
-            signals.push(...this.processSignals(e, className))
-            signals.push(...this.generateNotifyMethods(e, propertyNames,
-                        this.localName(e)))
-        })
-        if (signals.length || explicitConnect || explicitDisconnect) {
+        const signals = this.processSelfAndInterfaceSignals(cls, propertyNames)
+        if (signals.length || sigClash) {
+            const locals: LocalNames = {}
+            this.traverseInheritanceTree(cls, (parent: GirClass) => {
+                if (parent == cls) return
+                const propNames: string[] = []
+                this.forEachInterfaceAndSelf(parent, (e) => {
+                    // Here we don't want the definitions, just the names for
+                    // notify signals
+                    this.processProperties(e, locals, propNames)
+                })
+                signals.push(...this.processSelfAndInterfaceSignals(parent, propNames))
+            })
             signals.push('    /* Generic signal methods */')
             signals.push(...this.generateGeneralSignalMethods(cls))
         }
