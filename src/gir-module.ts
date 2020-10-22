@@ -1157,9 +1157,9 @@ export class GirModule {
         return def
     }
 
-    private generateGeneralSignalMethods(girClass: GirClass): string[] {
+    private generateGeneralSignalMethods(girClass: GirClass, disconnect = false): string[] {
         return TemplateProcessor.generateGeneralSignalMethods(this.config.environment,
-                1, this.name === "GObject" && girClass.$.name === "Object")
+                1, disconnect || (this.name === "GObject" && girClass.$.name === "Object"))
     }
 
     /**
@@ -1429,10 +1429,14 @@ export class GirModule {
         }
         const def: string[] = this.exportOverloadableMethods(fnMap, explicits)
         let sigClash = false
+        let disconnect = false
         for (const fn of signalMethods) {
             if (explicits.has(fn)) {
                 sigClash = true
-                break
+                if (fn === 'disconnect') {
+                    disconnect = true
+                    break
+                }
             }
         }
         // Properties
@@ -1455,7 +1459,7 @@ export class GirModule {
                 signals.push(...this.processSelfAndInterfaceSignals(parent, propNames))
             })
             signals.push('    /* Generic signal methods */')
-            signals.push(...this.generateGeneralSignalMethods(cls))
+            signals.push(...this.generateGeneralSignalMethods(cls, disconnect))
         }
         def.push(...signals)
         return def
