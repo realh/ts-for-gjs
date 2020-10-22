@@ -1296,7 +1296,9 @@ export class GirModule {
                     if (iface.property) {
                         for (const p of iface.property) {
                             const [desc, name] = this.getProperty(p, true, true)
-                            def.push(...this.checkName(desc, name, constructPropNames)[0])
+                            const [props, added] = this.checkName(desc, name, constructPropNames)
+                            if (added)
+                                def.push(...props)
                         }
                     }
                 })
