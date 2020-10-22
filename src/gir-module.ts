@@ -1427,8 +1427,17 @@ export class GirModule {
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
     private processInstanceMethodsSignalsProperties(cls: GirClass, localNames: LocalNames, className: string): string[] {
+        // First get inherited property names, because subclass methods that clash with them can't be declared
+        const inheritedProps = new Set<string>()
+        this.traverseInheritanceTree(cls, e => {
+            if (e.property?.length) {
+                for (const p of e.property) {
+                    if (p.$.name) inheritedProps.add(p.$.name)
+                }
+            }
+        });
         // Methods
-        const [fnMap, newNames] = this.processOverloadableMethods(cls, (e) => {
+        const [fnMap, _] = this.processOverloadableMethods(cls, (e) => {
             // This already filters out methods with same name as superclass
             // properties
             let methods = this.getInstanceMethods(e)
@@ -1441,10 +1450,16 @@ export class GirModule {
                 localNames[f[1]] = true
                 return true
             })
-            if (methods.length)
-                methods[0][0].unshift(`    /* Methods of ${e._fullSymName} */`)
             return methods
         })
+        for (const fn of fnMap) {
+            if (inheritedProps.has(fn[0])) {
+                const warn = `${fn[0]} method(s) clash with an inherited property`
+                this.log.warn(`${cls._fullSymName}.${warn}`)
+                const indent = TemplateProcessor.generateIndent(1)
+                fn[1] = [`${indent}// WARN: ${warn}`]
+            }
+        }
         const def: string[] = this.exportOverloadableMethods(fnMap)
         let sigClash = false
         let disconnect = false
