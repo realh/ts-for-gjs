@@ -846,7 +846,7 @@ export class GirModule {
      * @param cls
      */
     private processVirtualMethods(cls: GirClass): string[] {
-        const [fnMap, _] = this.processOverloadableMethods(cls, (e) => {
+        const fnMap = this.processOverloadableMethods(cls, (e) => {
             let methods = (e['virtual-method'] || []).map((f) => {
                 const desc = this.getFunction(f, '    ', 'vfunc_')
                 return desc
@@ -1073,13 +1073,11 @@ export class GirModule {
      * if it doesn't already contain a function of the same name.
      * @param fnMap
      * @param funcs
-     * @param localNames Updated with all names in funcs, whether or not they're added to fnMap
      * @param force
      */
     private addOverloadableFunctions(
         fnMap: FunctionMap,
         funcs: FunctionDescription[],
-        localNames: LocalNames,
         force = false,
         supName?: string,
         subName?: string,
@@ -1087,7 +1085,6 @@ export class GirModule {
     ) {
         for (const func of funcs) {
             if (!func[1]) continue
-            localNames[func[1]] = true
             this.mergeOverloadableFunctions(fnMap, func, force, supName, subName, statics)
         }
     }
@@ -1101,72 +1098,47 @@ export class GirModule {
      *         which need to be checked for clashes/overloads
      */
     private processOverloadableMethods(
-        cls: GirClass,
+        girClass: GirClass,
         getMethods: (e: GirClass) => FunctionDescription[],
         statics = false,
-    ): [FunctionMap, LocalNames] {
+    ): FunctionMap {
         const fnMap: FunctionMap = new Map()
-        const localNames: LocalNames = {}
-        if (!statics && cls._fullSymName != 'GObject.Object') {
+        // Make sure explicit methods don't clash with signal methods
+        if (!statics && girClass._fullSymName != 'GObject.Object') {
             for (const fn of signalMethods) {
-                localNames[fn] = true
-                const indent = TemplateProcessor.generateIndent(1)
                 fnMap.set(fn, [])
             }
         }
-        const funcs = getMethods(cls)
-        const subName = cls._fullSymName
-        this.addOverloadableFunctions(fnMap, funcs, localNames, true, subName, subName, statics)
-        // Have to implement methods from cls' interfaces
-        this.forEachInterface(
-            cls,
-            (iface) => {
-                if (!this.interfaceIsDuplicate(cls, iface)) {
-                    const funcs = getMethods(iface)
-                    this.addOverloadableFunctions(fnMap, funcs, localNames, true, iface._fullSymName, subName, statics)
-                }
-            },
-            false,
-        )
-        // Check for overloads among all inherited methods
-        let bottom = true
-        this.traverseInheritanceTree(cls, (e) => {
-            if (bottom) {
-                bottom = false
-                return
-            }
+        const funcs = getMethods(girClass)
+        const subName = girClass._fullSymName
+        this.addOverloadableFunctions(fnMap, funcs, true, subName, subName, statics)
+        // Have to implement methods from cls' interfaces and overload the ones it inherits
+        this.traverseInheritanceTree(girClass, (cls) => {
             if (statics) {
-                const funcs = getMethods(e)
-                this.addOverloadableFunctions(fnMap, funcs, localNames, false, e._fullSymName, subName, statics)
+                const funcs = getMethods(cls)
+                this.addOverloadableFunctions(fnMap, funcs, false, cls._fullSymName, subName, statics)
             } else {
-                let self = true
-                this.forEachInterfaceAndSelf(e, (iface) => {
-                    const funcs = getMethods(iface)
-                    if (self || !this.interfaceIsDuplicate(cls, iface)) {
-                        this.addOverloadableFunctions(fnMap, funcs, localNames, false, e._fullSymName, subName, statics)
-                    } else {
-                        for (const func of funcs) {
-                            if (!func[1]) continue
-                            localNames[func[1]] = true
-                        }
+                this.forEachInterfaceAndSelf(cls, (e) => {
+                    const funcs = getMethods(e)
+                    if (e == cls || !this.interfaceIsDuplicate(cls, e)) {
+                        this.addOverloadableFunctions(fnMap, funcs, e != cls, e._fullSymName, subName, statics)
                     }
-                    self = false
                 })
             }
         })
         // If there were no clashes with the signal methods they should be removed from fnMap
-        if (!statics && cls._fullSymName != 'GObject.Object') {
+        if (!statics && girClass._fullSymName != 'GObject.Object') {
             for (const fn of signalMethods) {
                 if ((fnMap.get(fn)?.length || 0) <= 1) {
                     fnMap.delete(fn)
                 }
             }
         }
-        return [fnMap, localNames]
+        return fnMap
     }
 
     private processStaticFunctions(cls: GirClass, getter: (e: GirClass) => FunctionDescription[]): string[] {
-        const [fnMap, _] = this.processOverloadableMethods(cls, getter, true)
+        const fnMap = this.processOverloadableMethods(cls, getter, true)
         return this.exportOverloadableMethods(fnMap)
     }
 
@@ -1449,20 +1421,18 @@ export class GirModule {
             }
         });
         // Methods
-        const [fnMap, _] = this.processOverloadableMethods(cls, (e) => {
-            // This already filters out methods with same name as superclass
-            // properties
-            let methods = this.getInstanceMethods(e)
-            // Some records in Gst-1.0 have clashes between method and field names;
-            // exposing fields is more flexible, but exposing methods is safer, and
-            // filtering out the methods here was causing problems
-            methods = methods.filter((f) => {
-                if (!f[1])
-                    return false
-                localNames[f[1]] = true
-                return true
+        const fnMap = this.processOverloadableMethods(cls, (e) => {
+            return this.getInstanceMethods(e)
+        })
+        // localNames has to include all methods even if they're implicitly
+        // inherited and not declared in this class
+        this.traverseInheritanceTree(cls, e => {
+            this.forEachInterfaceAndSelf(e, iface => {
+                for (const f of iface.method || []) {
+                    if (f.$.name)
+                        localNames[f.$.name] = true
+                }
             })
-            return methods
         })
         for (const fn of fnMap) {
             if (inheritedProps.has(fn[0])) {
