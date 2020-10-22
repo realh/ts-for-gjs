@@ -767,7 +767,7 @@ export class GirModule {
 
         if (localNames[name]) {
             // this.log.warn(`Name ${name} already defined (${desc})`)
-            return [[], false]
+            return [desc, false]
         }
 
         localNames[name] = true
@@ -1078,7 +1078,7 @@ export class GirModule {
         getMethods: (e: GirClass) => FunctionDescription[],
         statics = false,
     ): [FunctionMap, LocalNames] {
-        const dolog = cls._fullSymName == 'Gtk.AppChooserWidget'
+        let dolog = cls._fullSymName == 'Gtk.ToolShell' && !statics
         const fnMap: FunctionMap = new Map()
         const localNames: LocalNames = {}
         if (!statics && cls._fullSymName != 'GObject.Object') {
@@ -1089,7 +1089,14 @@ export class GirModule {
             }
         }
         const funcs = getMethods(cls)
+        if (funcs?.length && funcs[0][0] && funcs[0][0].indexOf('vfunc_') > 0)
+            dolog = false
         this.addOverloadableFunctions(fnMap, funcs, localNames, true)
+        if (dolog) {
+            console.log(`Actual methods of ${cls._fullSymName} include get_style: ${funcs.find(f => f[1] == 'get_style') != undefined}`)
+            console.log(`fnMap get_style: ${fnMap.get('get_style')}`)
+            console.log(`localNames includes get_style: ${localNames.get_style}`)
+        }
         // Have to implement methods from cls' interfaces
         this.forEachInterface(
             cls,
@@ -1097,6 +1104,11 @@ export class GirModule {
                 if (!this.interfaceIsDuplicate(cls, iface)) {
                     const funcs = getMethods(iface)
                     this.addOverloadableFunctions(fnMap, funcs, localNames, true)
+                    if (dolog) {
+                        console.log(`Methods from iface ${iface._fullSymName} include get_style: ${funcs.find(f => f[1] == 'get_style') != undefined}`)
+                        console.log(`fnMap get_style: ${fnMap.get('get_style')}`)
+                        console.log(`localNames includes get_style: ${localNames.get_style}`)
+                    }
                 }
             },
             false,
@@ -1115,29 +1127,30 @@ export class GirModule {
                 let self = true
                 this.forEachInterfaceAndSelf(e, (iface) => {
                     const funcs = getMethods(iface)
-                    if (self || this.interfaceIsDuplicate(cls, iface)) {
-                        if (dolog)
-                            console.log(`Adding overloadable fns of ${iface._fullSymName}`)
+                    if (dolog)
+                        console.log(`Methods from ${e._fullSymName} via ${cls._fullSymName} include get_style: ${funcs.find(f => f[1] == 'get_style') != undefined}`)
+                    if (self || !this.interfaceIsDuplicate(cls, iface)) {
                         this.addOverloadableFunctions(fnMap, funcs, localNames, false)
+                        if (dolog) {
+                            console.log(`fnMap get_style: ${fnMap.get('get_style')}`)
+                            console.log(`localNames includes get_style: ${localNames.get_style}`)
+                        }
                     } else {
-                        if (dolog)
-                            console.log(`Adding implicit fns of ${iface._fullSymName}`)
                         for (const func of funcs) {
                             if (!func[1]) continue
-                            if (dolog)
-                                console.log(`    ${func[1]}`)
                             localNames[func[1]] = true
                         }
+                        if (dolog)
+                            console.log(`Implicit localNames includes get_style: ${localNames.get_style}`)
                     }
                     self = false
                 })
             }
         })
-        // If there were no clashes with the signal methods they should be removed from results
+        // If there were no clashes with the signal methods they should be removed from fnMap
         if (!statics && cls._fullSymName != 'GObject.Object') {
             for (const fn of signalMethods) {
                 if ((fnMap.get(fn)?.length || 0) <= 1) {
-                    delete localNames[fn]
                     fnMap.delete(fn)
                 }
             }
@@ -1417,31 +1430,24 @@ export class GirModule {
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
     private processInstanceMethodsSignalsProperties(cls: GirClass, localNames: LocalNames, className: string): string[] {
-        const dolog = cls._fullSymName == 'Gtk.AppChooserWidget'
         // Methods
         const [fnMap, newNames] = this.processOverloadableMethods(cls, (e) => {
             // This already filters out methods with same name as superclass
             // properties
             let methods = this.getInstanceMethods(e)
-            // Some records in Gst-1.0 have clashes between method and field names
+            // Some records in Gst-1.0 have clashes between method and field names;
+            // exposing fields is more flexible, but exposing methods is safer, and
+            // filtering out the methods here was causing problems
             methods = methods.filter((f) => {
                 if (!f[1])
                     return false
-                const result = this.checkName(f[0], f[1], localNames)[1]
-                // We don't actually want to add methods to localNames yet
-                // because some names need to be duplicated for overloading
-                if (!result)
-                    localNames[f[1]] = true
-                return result
+                localNames[f[1]] = true
+                return true
             })
             if (methods.length)
                 methods[0][0].unshift(`    /* Methods of ${e._fullSymName} */`)
             return methods
         })
-        if (dolog) {
-            console.log(`All methods of ${cls._fullSymName}`)
-            console.dir(localNames)
-        }
         const def: string[] = this.exportOverloadableMethods(fnMap)
         let sigClash = false
         let disconnect = false
