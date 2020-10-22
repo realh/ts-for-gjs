@@ -800,8 +800,12 @@ export class GirModule {
                 const [aDesc, added] = this.checkName(desc, name, localNames)
                 if (added) {
                     if (origName) propertyNames.push(origName)
+                    def.push(...aDesc)
+                } else if (name && !propertyNames.includes(name)) {
+                    const warn = `${name} property clashes with an inherited method`
+                    this.log.warn(`${cls._fullSymName}.${warn}`)
+                    def.push(`${TemplateProcessor.generateIndent(1)}// ${warn}`)
                 }
-                def.push(...aDesc)
             }
         }
         if (def.length) {
@@ -1048,7 +1052,7 @@ export class GirModule {
                 if (!statics) {
                     if (signalMethods.includes(func[1]))
                         supName = 'GObject.Object'
-                    this.log.warn(`${subName}.${func[1]} clashes with ${supName}.${func[1]}`)
+                    this.log.warn(`${subName}.${func[1]}() clashes with ${supName}.${func[1]}()`)
                     supName += '.prototype'
                 }
                 const indent = TemplateProcessor.generateIndent(1)
@@ -1489,13 +1493,16 @@ export class GirModule {
             const locals: LocalNames = {}
             this.traverseInheritanceTree(cls, (parent: GirClass) => {
                 if (parent == cls) return
-                const propNames: string[] = []
+                const propNames = new Set<string>()
                 this.forEachInterfaceAndSelf(parent, (e) => {
                     // Here we don't want the definitions, just the names for
                     // notify signals
-                    this.processProperties(e, locals, propNames)
+                    for (const p of e.property || []) {
+                        if (p.$.name)
+                            propNames.add(p.$.name)
+                    }
                 })
-                signals.push(...this.processSelfAndInterfaceSignals(parent, propNames))
+                signals.push(...this.processSelfAndInterfaceSignals(parent, Array.from(propNames.keys())))
             })
             signals.push('    /* Generic signal methods */')
             signals.push(...this.generateGeneralSignalMethods(cls, disconnect))
