@@ -1019,7 +1019,7 @@ export class GirModule {
      * @param func
      * @param force
      */
-    private mergeOverloadableFunctions(map: FunctionMap, func: FunctionDescription, force = true) {
+    private mergeOverloadableFunctions(map: FunctionMap, func: FunctionDescription, force = true, clsName?: string, statics = false) {
         if (!func[1]) return false
         const defs = map.get(func[1])
         if (!defs) {
@@ -1036,6 +1036,12 @@ export class GirModule {
                 }
             }
             if (!match) {
+                if (!clsName)
+                    clsName = '..'
+                if (!statics)
+                    clsName += '.prototype'
+                const indent = TemplateProcessor.generateIndent(1)
+                defs.push(`${indent}// WARNING: Name clash, use ${clsName}.${func[1]}.call(this, ...)`)
                 defs.push(newDef)
                 result = true
             }
@@ -1057,11 +1063,13 @@ export class GirModule {
         funcs: FunctionDescription[],
         localNames: LocalNames,
         force = false,
+        clsName?: string,
+        statics = false,
     ) {
         for (const func of funcs) {
             if (!func[1]) continue
             localNames[func[1]] = true
-            this.mergeOverloadableFunctions(fnMap, func, force)
+            this.mergeOverloadableFunctions(fnMap, func, force, clsName, statics)
         }
     }
 
@@ -1078,37 +1086,24 @@ export class GirModule {
         getMethods: (e: GirClass) => FunctionDescription[],
         statics = false,
     ): [FunctionMap, LocalNames] {
-        let dolog = cls._fullSymName == 'Gtk.ToolShell' && !statics
         const fnMap: FunctionMap = new Map()
         const localNames: LocalNames = {}
         if (!statics && cls._fullSymName != 'GObject.Object') {
             for (const fn of signalMethods) {
                 localNames[fn] = true
                 const indent = TemplateProcessor.generateIndent(1)
-                fnMap.set(fn, [`${indent}// WARNING: Name clash, use ...prototype.${fn}.call(this, ...)`])
+                fnMap.set(fn, [])
             }
         }
         const funcs = getMethods(cls)
-        if (funcs?.length && funcs[0][0] && funcs[0][0].indexOf('vfunc_') > 0)
-            dolog = false
-        this.addOverloadableFunctions(fnMap, funcs, localNames, true)
-        if (dolog) {
-            console.log(`Actual methods of ${cls._fullSymName} include get_style: ${funcs.find(f => f[1] == 'get_style') != undefined}`)
-            console.log(`fnMap get_style: ${fnMap.get('get_style')}`)
-            console.log(`localNames includes get_style: ${localNames.get_style}`)
-        }
+        this.addOverloadableFunctions(fnMap, funcs, localNames, true, cls._fullSymName, statics)
         // Have to implement methods from cls' interfaces
         this.forEachInterface(
             cls,
             (iface) => {
                 if (!this.interfaceIsDuplicate(cls, iface)) {
                     const funcs = getMethods(iface)
-                    this.addOverloadableFunctions(fnMap, funcs, localNames, true)
-                    if (dolog) {
-                        console.log(`Methods from iface ${iface._fullSymName} include get_style: ${funcs.find(f => f[1] == 'get_style') != undefined}`)
-                        console.log(`fnMap get_style: ${fnMap.get('get_style')}`)
-                        console.log(`localNames includes get_style: ${localNames.get_style}`)
-                    }
+                    this.addOverloadableFunctions(fnMap, funcs, localNames, true, cls._fullSymName, statics)
                 }
             },
             false,
@@ -1122,26 +1117,18 @@ export class GirModule {
             }
             if (statics) {
                 const funcs = getMethods(e)
-                this.addOverloadableFunctions(fnMap, funcs, localNames, false)
+                this.addOverloadableFunctions(fnMap, funcs, localNames, false, cls._fullSymName, statics)
             } else {
                 let self = true
                 this.forEachInterfaceAndSelf(e, (iface) => {
                     const funcs = getMethods(iface)
-                    if (dolog)
-                        console.log(`Methods from ${e._fullSymName} via ${cls._fullSymName} include get_style: ${funcs.find(f => f[1] == 'get_style') != undefined}`)
                     if (self || !this.interfaceIsDuplicate(cls, iface)) {
-                        this.addOverloadableFunctions(fnMap, funcs, localNames, false)
-                        if (dolog) {
-                            console.log(`fnMap get_style: ${fnMap.get('get_style')}`)
-                            console.log(`localNames includes get_style: ${localNames.get_style}`)
-                        }
+                        this.addOverloadableFunctions(fnMap, funcs, localNames, false, cls._fullSymName, statics)
                     } else {
                         for (const func of funcs) {
                             if (!func[1]) continue
                             localNames[func[1]] = true
                         }
-                        if (dolog)
-                            console.log(`Implicit localNames includes get_style: ${localNames.get_style}`)
                     }
                     self = false
                 })
