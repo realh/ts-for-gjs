@@ -1018,8 +1018,17 @@ export class GirModule {
      * @param map
      * @param func
      * @param force
+     * @param supName Name of superclass/interface whose methods may be hidden
+     * @param subName Name of subclass potentially hiding methods
+     * @param statics Whether these are static methods
      */
-    private mergeOverloadableFunctions(map: FunctionMap, func: FunctionDescription, force = true, clsName?: string, statics = false) {
+    private mergeOverloadableFunctions(map: FunctionMap,
+            func: FunctionDescription,
+            force = true,
+            supName?: string,
+            subName?: string,
+            statics = false,
+            ) {
         if (!func[1]) return false
         const defs = map.get(func[1])
         if (!defs) {
@@ -1036,12 +1045,11 @@ export class GirModule {
                 }
             }
             if (!match) {
-                if (!clsName)
-                    clsName = '..'
+                this.log.warn(`${subName}.${func[1]} clashes with ${supName}.${func[1]}`)
                 if (!statics)
-                    clsName += '.prototype'
+                    supName += '.prototype'
                 const indent = TemplateProcessor.generateIndent(1)
-                defs.push(`${indent}// WARNING: Name clash, use ${clsName}.${func[1]}.call(this, ...)`)
+                defs.push(`${indent}// WARN: Name clash, use ${supName}.${func[1]}.call(this, ...)`)
                 defs.push(newDef)
                 result = true
             }
@@ -1063,13 +1071,14 @@ export class GirModule {
         funcs: FunctionDescription[],
         localNames: LocalNames,
         force = false,
-        clsName?: string,
+        supName?: string,
+        subName?: string,
         statics = false,
     ) {
         for (const func of funcs) {
             if (!func[1]) continue
             localNames[func[1]] = true
-            this.mergeOverloadableFunctions(fnMap, func, force, clsName, statics)
+            this.mergeOverloadableFunctions(fnMap, func, force, supName, subName, statics)
         }
     }
 
@@ -1096,14 +1105,15 @@ export class GirModule {
             }
         }
         const funcs = getMethods(cls)
-        this.addOverloadableFunctions(fnMap, funcs, localNames, true, cls._fullSymName, statics)
+        const subName = cls._fullSymName
+        this.addOverloadableFunctions(fnMap, funcs, localNames, true, subName, subName, statics)
         // Have to implement methods from cls' interfaces
         this.forEachInterface(
             cls,
             (iface) => {
                 if (!this.interfaceIsDuplicate(cls, iface)) {
                     const funcs = getMethods(iface)
-                    this.addOverloadableFunctions(fnMap, funcs, localNames, true, cls._fullSymName, statics)
+                    this.addOverloadableFunctions(fnMap, funcs, localNames, true, iface._fullSymName, subName, statics)
                 }
             },
             false,
@@ -1117,13 +1127,13 @@ export class GirModule {
             }
             if (statics) {
                 const funcs = getMethods(e)
-                this.addOverloadableFunctions(fnMap, funcs, localNames, false, cls._fullSymName, statics)
+                this.addOverloadableFunctions(fnMap, funcs, localNames, false, e._fullSymName, subName, statics)
             } else {
                 let self = true
                 this.forEachInterfaceAndSelf(e, (iface) => {
                     const funcs = getMethods(iface)
                     if (self || !this.interfaceIsDuplicate(cls, iface)) {
-                        this.addOverloadableFunctions(fnMap, funcs, localNames, false, cls._fullSymName, statics)
+                        this.addOverloadableFunctions(fnMap, funcs, localNames, false, cls._fullSymName, subName, statics)
                     } else {
                         for (const func of funcs) {
                             if (!func[1]) continue
