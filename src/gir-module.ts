@@ -1045,11 +1045,17 @@ export class GirModule {
                 }
             }
             if (!match) {
-                this.log.warn(`${subName}.${func[1]} clashes with ${supName}.${func[1]}`)
-                if (!statics)
+                if (!statics) {
+                    if (signalMethods.includes(func[1]))
+                        supName = 'GObject.Object'
+                    this.log.warn(`${subName}.${func[1]} clashes with ${supName}.${func[1]}`)
                     supName += '.prototype'
+                }
                 const indent = TemplateProcessor.generateIndent(1)
-                defs.push(`${indent}// WARN: Name clash, use ${supName}.${func[1]}.call(this, ...)`)
+                if (statics)
+                    defs.push(`${indent}// WARN: False overload forced by TS rules, do not use`)
+                else
+                    defs.push(`${indent}// WARN: Name clash, use ${supName}.${func[1]}.call(this, ...)`)
                 defs.push(newDef)
                 result = true
             }
@@ -1133,7 +1139,7 @@ export class GirModule {
                 this.forEachInterfaceAndSelf(e, (iface) => {
                     const funcs = getMethods(iface)
                     if (self || !this.interfaceIsDuplicate(cls, iface)) {
-                        this.addOverloadableFunctions(fnMap, funcs, localNames, false, cls._fullSymName, subName, statics)
+                        this.addOverloadableFunctions(fnMap, funcs, localNames, false, e._fullSymName, subName, statics)
                     } else {
                         for (const func of funcs) {
                             if (!func[1]) continue
