@@ -961,6 +961,8 @@ export class GirModule {
             name = this.transformation.transformClassName(name.$.name)
             if (mod === this)
                 return name
+            else
+                name = mod.name + '.' + name
         }
         if (name.indexOf('.') < 0)
             return name
@@ -1391,9 +1393,12 @@ export class GirModule {
     }
 
     private processSelfAndInterfaceSignals(cls: GirClass, propertyNames: string[]): string[] {
+        const dolog = cls._fullSymName == 'Gtk.ArrowAccessible'
         const signals: string[] = []
         this.forEachInterfaceAndSelf(cls, (e) => {
             const clsName = this.localName(e)
+            if (dolog)
+                console.log(`Local name of ${e._fullSymName} in ${this.name} is ${clsName}`) 
             signals.push(...this.processSignals(e, clsName))
             signals.push(...this.generateNotifyMethods(e, propertyNames, clsName))
         })
