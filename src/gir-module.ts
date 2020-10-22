@@ -829,10 +829,9 @@ export class GirModule {
         return def
     }
 
-    private exportOverloadableMethods(fnMap: FunctionMap, explicits: Set<string>) {
+    private exportOverloadableMethods(fnMap: FunctionMap) {
         const def: string[] = []
-        for (const k of Array.from(explicits.values())) {
-            const f = fnMap.get(k)
+        for (const f of fnMap.values()) {
             if (f) def.push(...f)
         }
         return def
@@ -843,7 +842,7 @@ export class GirModule {
      * @param cls
      */
     private processVirtualMethods(cls: GirClass): string[] {
-        const [fnMap, explicits] = this.processOverloadableMethods(cls, (e) => {
+        const [fnMap, _] = this.processOverloadableMethods(cls, (e) => {
             let methods = (e['virtual-method'] || []).map((f) => {
                 const desc = this.getFunction(f, '    ', 'vfunc_')
                 return desc
@@ -851,7 +850,7 @@ export class GirModule {
             methods = methods.filter((f) => f[1] != null)
             return methods
         })
-        const def = this.exportOverloadableMethods(fnMap, explicits)
+        const def = this.exportOverloadableMethods(fnMap)
         if (def.length) {
             def.unshift(`    /* Virtual methods of ${cls._fullSymName} */`)
         }
@@ -1015,7 +1014,7 @@ export class GirModule {
     /**
      * See comment for addOverloadableFunctions.
      * Returns true if (a definition from) func is added to map to satisfy
-     * an overload, but false if it was forced
+     * an overload, or if it was forced
      * @param map
      * @param func
      * @param force
@@ -1046,25 +1045,23 @@ export class GirModule {
 
     /**
      * fnMap values are equivalent to the second element of a FunctionDescription.
-     * If an entry in fnMap is changed its name is added to explicits (set of names which must be declared).
-     * If force is true, every function of f2 is added to fnMap and overloads even
+     * If force is true, every function of funcs is added to fnMap even
      * if it doesn't already contain a function of the same name.
      * @param fnMap
-     * @param explicits
      * @param funcs
+     * @param localNames Updated with all names in funcs, whether or not they're added to fnMap
      * @param force
      */
     private addOverloadableFunctions(
         fnMap: FunctionMap,
-        explicits: Set<string>,
         funcs: FunctionDescription[],
+        localNames: LocalNames,
         force = false,
     ) {
         for (const func of funcs) {
             if (!func[1]) continue
-            if (this.mergeOverloadableFunctions(fnMap, func) || force) {
-                explicits.add(func[1])
-            }
+            localNames[func[1]] = true
+            this.mergeOverloadableFunctions(fnMap, func, force)
         }
     }
 
@@ -1073,30 +1070,33 @@ export class GirModule {
      * @param cls
      * @param getMethods
      * @param statics
+     * @return [FunctionMap, localNames]; localNames is a set of names
+     *         which need to be checked for clashes/overloads
      */
     private processOverloadableMethods(
         cls: GirClass,
         getMethods: (e: GirClass) => FunctionDescription[],
         statics = false,
-    ): [FunctionMap, Set<string>] {
+    ): [FunctionMap, LocalNames] {
+        const dolog = cls._fullSymName == 'Gtk.AppChooserWidget'
         const fnMap: FunctionMap = new Map()
-        const explicits = new Set<string>()
+        const localNames: LocalNames = {}
         if (!statics && cls._fullSymName != 'GObject.Object') {
             for (const fn of signalMethods) {
-                explicits.add(fn)
+                localNames[fn] = true
                 const indent = TemplateProcessor.generateIndent(1)
                 fnMap.set(fn, [`${indent}// WARNING: Name clash, use ...prototype.${fn}.call(this, ...)`])
             }
         }
         const funcs = getMethods(cls)
-        this.addOverloadableFunctions(fnMap, explicits, funcs, true)
+        this.addOverloadableFunctions(fnMap, funcs, localNames, true)
         // Have to implement methods from cls' interfaces
         this.forEachInterface(
             cls,
             (iface) => {
                 if (!this.interfaceIsDuplicate(cls, iface)) {
                     const funcs = getMethods(iface)
-                    this.addOverloadableFunctions(fnMap, explicits, funcs, true)
+                    this.addOverloadableFunctions(fnMap, funcs, localNames, true)
                 }
             },
             false,
@@ -1110,13 +1110,24 @@ export class GirModule {
             }
             if (statics) {
                 const funcs = getMethods(e)
-                this.addOverloadableFunctions(fnMap, explicits, funcs, false)
+                this.addOverloadableFunctions(fnMap, funcs, localNames, false)
             } else {
                 let self = true
                 this.forEachInterfaceAndSelf(e, (iface) => {
+                    const funcs = getMethods(iface)
                     if (self || this.interfaceIsDuplicate(cls, iface)) {
-                        const funcs = getMethods(iface)
-                        this.addOverloadableFunctions(fnMap, explicits, funcs, false)
+                        if (dolog)
+                            console.log(`Adding overloadable fns of ${iface._fullSymName}`)
+                        this.addOverloadableFunctions(fnMap, funcs, localNames, false)
+                    } else {
+                        if (dolog)
+                            console.log(`Adding implicit fns of ${iface._fullSymName}`)
+                        for (const func of funcs) {
+                            if (!func[1]) continue
+                            if (dolog)
+                                console.log(`    ${func[1]}`)
+                            localNames[func[1]] = true
+                        }
                     }
                     self = false
                 })
@@ -1126,17 +1137,17 @@ export class GirModule {
         if (!statics && cls._fullSymName != 'GObject.Object') {
             for (const fn of signalMethods) {
                 if ((fnMap.get(fn)?.length || 0) <= 1) {
-                    explicits.delete(fn)
+                    delete localNames[fn]
                     fnMap.delete(fn)
                 }
             }
         }
-        return [fnMap, explicits]
+        return [fnMap, localNames]
     }
 
     private processStaticFunctions(cls: GirClass, getter: (e: GirClass) => FunctionDescription[]): string[] {
-        const [fnMap, explicits] = this.processOverloadableMethods(cls, getter, true)
-        return this.exportOverloadableMethods(fnMap, explicits)
+        const [fnMap, _] = this.processOverloadableMethods(cls, getter, true)
+        return this.exportOverloadableMethods(fnMap)
     }
 
     private generateNotifyMethods(cls: GirClass, propertyNames: string[], callbackObjectName: string): string[] {
@@ -1406,8 +1417,9 @@ export class GirModule {
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
     private processInstanceMethodsSignalsProperties(cls: GirClass, localNames: LocalNames, className: string): string[] {
+        const dolog = cls._fullSymName == 'Gtk.AppChooserWidget'
         // Methods
-        const [fnMap, explicits] = this.processOverloadableMethods(cls, (e) => {
+        const [fnMap, newNames] = this.processOverloadableMethods(cls, (e) => {
             // This already filters out methods with same name as superclass
             // properties
             let methods = this.getInstanceMethods(e)
@@ -1418,22 +1430,23 @@ export class GirModule {
                 const result = this.checkName(f[0], f[1], localNames)[1]
                 // We don't actually want to add methods to localNames yet
                 // because some names need to be duplicated for overloading
-                if (result)
-                    delete localNames[f[1]]
+                if (!result)
+                    localNames[f[1]] = true
                 return result
             })
             if (methods.length)
                 methods[0][0].unshift(`    /* Methods of ${e._fullSymName} */`)
             return methods
         })
-        for (const n of explicits) {
-            localNames[n] = true
+        if (dolog) {
+            console.log(`All methods of ${cls._fullSymName}`)
+            console.dir(localNames)
         }
-        const def: string[] = this.exportOverloadableMethods(fnMap, explicits)
+        const def: string[] = this.exportOverloadableMethods(fnMap)
         let sigClash = false
         let disconnect = false
         for (const fn of signalMethods) {
-            if (explicits.has(fn)) {
+            if (localNames[fn]) {
                 sigClash = true
                 if (fn === 'disconnect') {
                     disconnect = true
