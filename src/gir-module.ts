@@ -1041,26 +1041,40 @@ export class GirModule {
             return false
         }
         let result = false
-        for (const newDef of func[0]) {
-            let match = false
-            for (const oldDef of defs) {
-                if (this.functionSignaturesMatch(newDef, oldDef)) {
-                    match = true
-                    break
+        for (let newDef of func[0]) {
+            const findMatch = () => {
+                let match = false
+                for (const oldDef of defs) {
+                    if (this.functionSignaturesMatch(newDef, oldDef)) {
+                        match = true
+                        break
+                    }
                 }
+                return match
+            }
+            let match = findMatch()
+            // TS overloading rules seem to be different for static methods; we
+            // have to provide a signature that's compatible with all overloads,
+            // so we might as well just replace the overload with a cover-all
+            if (!match && statics) {
+                newDef = `${TemplateProcessor.generateIndent(1)}static ${func[1]}(...args: any[]): any`
+                match = findMatch()
             }
             if (!match) {
+                let superName = supName
+                let subcName = subName
                 if (!statics) {
                     if (signalMethods.includes(func[1]))
-                        supName = 'GObject.Object'
-                    supName += '.prototype'
+                        superName = 'GObject.Object'
+                    superName += '.prototype'
+                    subcName += '.prototype'
                 }
-                this.log.warn(`${subName}.${func[1]}() clashes with ${supName}.${func[1]}()`)
+                this.log.warn(`${subcName}.${func[1]}() clashes with ${superName}.${func[1]}()`)
                 const indent = TemplateProcessor.generateIndent(1)
                 if (statics)
                     defs.push(`${indent}// WARN: False overload forced by TS rules, do not use`)
                 else
-                    defs.push(`${indent}// WARN: Name clash, use ${supName}.${func[1]}.call(this, ...)`)
+                    defs.push(`${indent}// WARN: Name clash, use ${superName}.${func[1]}.call(this, ...)`)
                 defs.push(newDef)
                 result = true
             }
