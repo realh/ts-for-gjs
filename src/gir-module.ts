@@ -935,10 +935,11 @@ export class GirModule {
      */
     private getClassMethods(girClass: GirClass): FunctionDescription[] {
         if (!girClass.$.name) return []
+        const mod = girClass._module || this
         const fName = girClass.$.name + 'Class'
-        let rec = this.ns.record?.find((r) => r.$.name == fName)
+        let rec = mod.ns.record?.find((r) => r.$.name == fName)
         if (!rec || !this.isGtypeStructFor(girClass, rec)) {
-            rec = this.ns.record?.find((r) => this.isGtypeStructFor(girClass, r))
+            rec = mod.ns.record?.find((r) => this.isGtypeStructFor(girClass, r))
             fName == rec?.$.name
         }
         if (!rec) return []
@@ -1052,9 +1053,9 @@ export class GirModule {
                 if (!statics) {
                     if (signalMethods.includes(func[1]))
                         supName = 'GObject.Object'
-                    this.log.warn(`${subName}.${func[1]}() clashes with ${supName}.${func[1]}()`)
                     supName += '.prototype'
                 }
+                this.log.warn(`${subName}.${func[1]}() clashes with ${supName}.${func[1]}()`)
                 const indent = TemplateProcessor.generateIndent(1)
                 if (statics)
                     defs.push(`${indent}// WARN: False overload forced by TS rules, do not use`)
@@ -1180,14 +1181,13 @@ export class GirModule {
                 return this.getStaticConstructors(cls, name)
             }),
         )
+        // class methods and static functions have to be processed together to resolve clashes
+        // eg where install_property is a static function of GtkSettings and a class method of GObject
         stc.push(
             ...this.processStaticFunctions(girClass, (cls) => {
-                return this.getOtherStaticFunctions(cls)
-            }),
-        )
-        stc.push(
-            ...this.processStaticFunctions(girClass, (cls) => {
-                return this.getClassMethods(cls)
+                const fns = this.getOtherStaticFunctions(cls)
+                fns.push(...this.getClassMethods(cls))
+                return fns
             }),
         )
 
