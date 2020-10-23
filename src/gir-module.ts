@@ -868,7 +868,8 @@ export class GirModule {
             for (const s of signals) def.push(...this.getSignalFunc(s, clsName))
         }
         if (def.length) {
-            def.unshift(`    /* Signals of ${cls._fullSymName} */`)
+            const ofCls = this.config.inheritance ? '' : `of ${cls._fullSymName} `
+            def.unshift(`    /* Signals ${ofCls}*/`)
         }
         return def
     }
@@ -1474,22 +1475,9 @@ export class GirModule {
             def.push(...this.processProperties(e, localNames, propertyNames))
         })
         // Signals
-        const signals = this.processSelfAndInterfaceSignals(cls, propertyNames)
+        const signals = this.processSignals(cls, className)
+        signals.push(...this.generateNotifyMethods(cls, propertyNames, className))
         if (signals.length || sigClash) {
-            const locals: LocalNames = {}
-            this.traverseInheritanceTree(cls, (parent: GirClass) => {
-                if (parent == cls) return
-                const propNames = new Set<string>()
-                this.forEachInterfaceAndSelf(parent, (e) => {
-                    // Here we don't want the definitions, just the names for
-                    // notify signals
-                    for (const p of e.property || []) {
-                        if (p.$.name)
-                            propNames.add(p.$.name)
-                    }
-                })
-                signals.push(...this.processSelfAndInterfaceSignals(parent, Array.from(propNames.keys())))
-            })
             signals.push('    /* Generic signal methods */')
             signals.push(...this.generateGeneralSignalMethods(cls, disconnect))
         }
