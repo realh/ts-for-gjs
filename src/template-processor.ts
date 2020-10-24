@@ -122,8 +122,7 @@ export class TemplateProcessor {
             `${ident}emit(sigName: string, ...args: any[]): void`,
         )
         // disconnect() only needs to be declared for GObject.Object
-        if (disconnect)
-            result.push(`${ident}disconnect(id: number): void`)
+        if (disconnect) result.push(`${ident}disconnect(id: number): void`)
 
         if (environment === 'node') {
             result.push(

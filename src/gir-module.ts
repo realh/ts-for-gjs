@@ -300,8 +300,7 @@ export class GirModule {
 
         if (girVar.callback?.length) {
             fullTypeName = this.getFunction(girVar.callback[0], '', '', undefined, true)[0][0]
-            if (suffix.length)
-                fullTypeName = '(' + fullTypeName + ')'
+            if (suffix.length) fullTypeName = '(' + fullTypeName + ')'
         } else {
             if (!type?.$) return 'any'
 
@@ -449,13 +448,12 @@ export class GirModule {
         if (parameters && parameters.length > 0) {
             const parametersArray = parameters[0].parameter || []
             // Instance parameter needs to be exposed for class methods (see comment above getClassMethods())
-            const instanceParameter = parameters[0]["instance-parameter"]
-            if (instanceParameter && instanceParameter[0])
-            {
+            const instanceParameter = parameters[0]['instance-parameter']
+            if (instanceParameter && instanceParameter[0]) {
                 const typeName = instanceParameter[0].type ? instanceParameter[0].type[0].$.name : undefined
                 const rec = typeName ? this.ns.record?.find((r) => r.$.name == typeName) : undefined
                 const structFor = rec?.$['glib:is-gtype-struct-for']
-                const gobject = (this.name === "GObject" || this.name === "GLib") ? '' : 'GObject.'
+                const gobject = this.name === 'GObject' || this.name === 'GLib' ? '' : 'GObject.'
                 if (structFor) {
                     // TODO: Should use of a constructor, and even of an instance, be discouraged?
                     def.push(`${instanceParameter[0].$.name}: ${structFor} | Function | ${gobject}Type`)
@@ -961,20 +959,16 @@ export class GirModule {
 
     private localName(name: string | GirClass) {
         let mod: GirModule
-        if (typeof name !== "string") {
+        if (typeof name !== 'string') {
             mod = name._module ? name._module : this
             name = this.transformation.transformClassName(name.$.name)
-            if (mod === this)
-                return name
-            else
-                name = mod.name + '.' + name
+            if (mod === this) return name
+            else name = mod.name + '.' + name
         }
-        if (name.indexOf('.') < 0)
-            return name
+        if (name.indexOf('.') < 0) return name
         let modName
-        [modName, name] = name.split('.')
-        if (modName != this.name)
-            name = modName + '.' + name
+        ;[modName, name] = name.split('.')
+        if (modName != this.name) name = modName + '.' + name
         return name
     }
 
@@ -1028,13 +1022,14 @@ export class GirModule {
      * @param subName Name of subclass potentially hiding methods
      * @param statics Whether these are static methods
      */
-    private mergeOverloadableFunctions(map: FunctionMap,
-            func: FunctionDescription,
-            force = true,
-            supName?: string,
-            subName?: string,
-            statics = false,
-            ) {
+    private mergeOverloadableFunctions(
+        map: FunctionMap,
+        func: FunctionDescription,
+        force = true,
+        supName?: string,
+        subName?: string,
+        statics = false,
+    ) {
         if (!func[1]) return false
         const defs = map.get(func[1])
         if (!defs) {
@@ -1065,17 +1060,14 @@ export class GirModule {
                 let superName = supName
                 let subcName = subName
                 if (!statics) {
-                    if (signalMethods.includes(func[1]))
-                        superName = 'GObject.Object'
+                    if (signalMethods.includes(func[1])) superName = 'GObject.Object'
                     superName += '.prototype'
                     subcName += '.prototype'
                 }
                 this.log.warn(`${subcName}.${func[1]}() clashes with ${superName}.${func[1]}()`)
                 const indent = TemplateProcessor.generateIndent(1)
-                if (statics)
-                    defs.push(`${indent}// WARN: False overload forced by TS rules, do not use`)
-                else
-                    defs.push(`${indent}// WARN: Name clash, use ${superName}.${func[1]}.call(this, ...)`)
+                if (statics) defs.push(`${indent}// WARN: False overload forced by TS rules, do not use`)
+                else defs.push(`${indent}// WARN: Name clash, use ${superName}.${func[1]}.call(this, ...)`)
                 defs.push(newDef)
                 result = true
             }
@@ -1179,8 +1171,11 @@ export class GirModule {
     }
 
     private generateGeneralSignalMethods(girClass: GirClass, disconnect = false): string[] {
-        return TemplateProcessor.generateGeneralSignalMethods(this.config.environment,
-                1, disconnect || (this.name === "GObject" && girClass.$.name === "Object"))
+        return TemplateProcessor.generateGeneralSignalMethods(
+            this.config.environment,
+            1,
+            disconnect || (this.name === 'GObject' && girClass.$.name === 'Object'),
+        )
     }
 
     /**
@@ -1284,8 +1279,7 @@ export class GirModule {
                         for (const p of iface.property) {
                             const [desc, name] = this.getProperty(p, true, true)
                             const [props, added] = this.checkName(desc, name, constructPropNames)
-                            if (added)
-                                def.push(...props)
+                            if (added) def.push(...props)
                         }
                     }
                 })
@@ -1304,13 +1298,11 @@ export class GirModule {
                 if (name.indexOf('.') >= 0) {
                     fullName = name
                     const [mod, local] = name.split('.')
-                    if (mod == this.name)
-                        name = local
+                    if (mod == this.name) name = local
                 } else {
                     fullName = (this.name || '') + '.' + name
                 }
-                if (!this.interfaceIsDuplicate(girClass, fullName))
-                    callback(name)
+                if (!this.interfaceIsDuplicate(girClass, fullName)) callback(name)
             }
         }
     }
@@ -1321,9 +1313,8 @@ export class GirModule {
         let inherits = localParentName ? `extends ${localParentName} ` : ''
         if (girClass.implements) {
             const impl: string[] = []
-            this.forEachImplementedLocalName(girClass, n => impl.push(n))
-            if (impl.length)
-                inherits += `implements ${impl.join(',')} `
+            this.forEachImplementedLocalName(girClass, (n) => impl.push(n))
+            if (impl.length) inherits += `implements ${impl.join(',')} `
         }
         return inherits
     }
@@ -1381,10 +1372,8 @@ export class GirModule {
     // signatures
     private functionSignaturesMatch(f1: string, f2: string) {
         const comment = /^\s*\//
-        if (comment.test(f1))
-            return comment.test(f2)
-        else if (comment.test(f2))
-            return false
+        if (comment.test(f1)) return comment.test(f2)
+        else if (comment.test(f2)) return false
         return this.stripParamNames(f1) == this.stripParamNames(f2)
     }
 
@@ -1406,7 +1395,7 @@ export class GirModule {
 
     private descriptionsFromFunctions(funcs: string[]): FunctionDescription[] {
         const extractName = /^\s*(.*)\(/
-        return funcs.map(f => {
+        return funcs.map((f) => {
             const m = f.match(extractName)
             return [[f], m ? m[1] : null]
         })
@@ -1425,27 +1414,30 @@ export class GirModule {
     // These have to be processed together, because signals add overloads
     // for connect() etc (including property notifications) and prop names may
     // clash with method names, meaning one or the other has to be removed
-    private processInstanceMethodsSignalsProperties(cls: GirClass, localNames: LocalNames, className: string): string[] {
+    private processInstanceMethodsSignalsProperties(
+        cls: GirClass,
+        localNames: LocalNames,
+        className: string,
+    ): string[] {
         // First get inherited property names, because subclass methods that clash with them can't be declared
         const inheritedProps = new Set<string>()
-        this.traverseInheritanceTree(cls, e => {
+        this.traverseInheritanceTree(cls, (e) => {
             if (e.property?.length) {
                 for (const p of e.property) {
                     if (p.$.name) inheritedProps.add(p.$.name)
                 }
             }
-        });
+        })
         // Methods
         const fnMap = this.processOverloadableMethods(cls, (e) => {
             return this.getInstanceMethods(e)
         })
         // localNames has to include all methods even if they're implicitly
         // inherited and not declared in this class
-        this.traverseInheritanceTree(cls, e => {
-            this.forEachInterfaceAndSelf(e, iface => {
+        this.traverseInheritanceTree(cls, (e) => {
+            this.forEachInterfaceAndSelf(e, (iface) => {
                 for (const f of iface.method || []) {
-                    if (f.$.name)
-                        localNames[f.$.name] = true
+                    if (f.$.name) localNames[f.$.name] = true
                 }
             })
         })
@@ -1547,7 +1539,7 @@ export class GirModule {
         def.push(...this.generateConstructPropsInterface(girClass, name, qualifiedParentName, localParentName))
 
         // Superclass and interfaces
-        let inherits = this.config.inheritance ? this.getInheritance(girClass, localParentName) : ""
+        const inherits = this.config.inheritance ? this.getInheritance(girClass, localParentName) : ''
 
         // START CLASS
         if (isAbstract) {
@@ -1560,8 +1552,7 @@ export class GirModule {
 
         const inheritance = this.config.inheritance
         if (inheritance) {
-            def.push(...this.processInstanceMethodsSignalsProperties(girClass,
-                        localNames, name))
+            def.push(...this.processInstanceMethodsSignalsProperties(girClass, localNames, name))
             def.push(...this.processVirtualMethods(girClass))
         } else {
             const propertyNames: string[] = []
@@ -1570,7 +1561,9 @@ export class GirModule {
                 def.push(...this.processProperties(cls, localNames, propertyNames)),
             )
             // Copy properties from implemented interfaces
-            this.forEachInterface(girClass, (cls) => def.push(...this.processProperties(cls, localNames, propertyNames)))
+            this.forEachInterface(girClass, (cls) =>
+                def.push(...this.processProperties(cls, localNames, propertyNames)),
+            )
             def.push(...this.generateNotifyMethods(girClass, propertyNames, name))
             this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processFields(cls, localNames)))
             // Copy methods from inheritance tree
