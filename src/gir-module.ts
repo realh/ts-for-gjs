@@ -765,7 +765,7 @@ export class GirModule {
 
         if (localNames[name]) {
             // this.log.warn(`Name ${name} already defined (${desc})`)
-            return [desc, false]
+            return [[], false]
         }
 
         localNames[name] = true
@@ -777,11 +777,7 @@ export class GirModule {
         if (cls.field) {
             for (const f of cls.field) {
                 const [desc, name] = this.getVariable(f, false, false, 'field')
-
-                const [aDesc, added] = this.checkName(desc, name, localNames)
-                if (added) {
-                    def.push(`    ${aDesc[0]}`)
-                }
+                def.push(...this.checkName(desc, name, localNames)[0])
             }
         }
         if (def.length) {
@@ -1278,8 +1274,7 @@ export class GirModule {
                     if (iface.property) {
                         for (const p of iface.property) {
                             const [desc, name] = this.getProperty(p, true, true)
-                            const [props, added] = this.checkName(desc, name, constructPropNames)
-                            if (added) def.push(...props)
+                            def.push(...this.checkName(desc, name, constructPropNames)[0])
                         }
                     }
                 })
