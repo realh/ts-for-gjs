@@ -327,10 +327,10 @@ export class GirModule {
 
             fullTypeName = type.$.name
 
-        if (typeof fullTypeName === 'string') {
-            if (FULL_TYPE_MAP(this.config.environment, out)[fullTypeName]) {
-                return FULL_TYPE_MAP(this.config.environment, out)[fullTypeName]
-            }
+            if (typeof fullTypeName === 'string') {
+                if (FULL_TYPE_MAP(this.config.environment, out)[fullTypeName]) {
+                    return FULL_TYPE_MAP(this.config.environment, out)[fullTypeName]
+                }
 
                 // Fully qualify our type name if need be
                 if (!fullTypeName.includes('.')) {
