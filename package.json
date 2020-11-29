@@ -8,14 +8,12 @@
   "scripts": {
     "start": "ts-node src/index",
     "prepublish": "npm run lint && npm run regress && npm run test && npm run build",
-    "test": "npm run test:ava",
-    "test:ava": "npm run build:ts && npm run build:test:ava && ava tmp/test/ava/test.js",
+    "test": "npm run test:girs",
     "test:girs": "git submodule update --init && npm run build:ts && npm run build:test:girs && npm run validate:gjs",
     "regress": "npm run clear && npm run build:ts && npm run start -- generate --configName='.ts-for-gir.regress.rc.js' && npm run validate",
     "build": "npm run clear:build && npm run build:ts",
     "build:ts": "tsc",
     "build:test:girs": "rm -rf ./test/girs/@types/Gjs && npm run start -- generate --configName='.ts-for-gir.gtk-3.rc.js' && tsc --noEmit ./test/girs/@types/Gjs/*.ts",
-    "build:test:ava": "tsc -p tsconfig.ava.json",
     "validate:gjs": "tsc --noEmit ./@types/Gjs/*.ts",
     "validate:node": "tsc --noEmit ./@types/node-gtk/*.ts",
     "validate": "npm run validate:gjs && npm run validate:node",
@@ -58,7 +56,6 @@
     "@types/xml2js": "0.4.5",
     "@typescript-eslint/eslint-plugin": "^4.4.0",
     "@typescript-eslint/parser": "^4.4.0",
-    "ava": "^3.3.0",
     "ejs": "^3.0.1",
     "ts-node": "^9.0.0",
     "typescript": "^4.0.3"
