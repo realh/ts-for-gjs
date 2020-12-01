@@ -1140,34 +1140,31 @@ export class GirModule {
         return stc
     }
 
-    private generateConstructorAndStaticMethods(girClass: GirClass, name: string): string[] {
+    // If asInterface is true it means use the constructor interface pattern
+    private generateConstructorAndStaticMethods(girClass: GirClass, name: string, asInterface: boolean): string[] {
         const def: string[] = []
         const isDerivedFromGObject = this.isDerivedFromGObject(girClass)
-        if (girClass._fullSymName && !STATIC_NAME_ALREADY_EXISTS.includes(girClass._fullSymName)) {
-            // Records, classes and interfaces all have a static name
-            def.push(`    static name: string`)
-        }
+        const stat = asInterface ? '' : 'static '
 
         // JS constructor(s)
         if (isDerivedFromGObject) {
-            def.push(
-                `    constructor (config?: ${name}_ConstructProps)`,
-                `    _init (config?: ${name}_ConstructProps): void`,
-            )
+            if (asInterface) {
+                def.push(`    new (config?: ${name}_ConstructProps): ${name}`)
+            } else {
+                def.push(`    constructor (config?: ${name}_ConstructProps)`)
+            }
+            def.push(`    _init (config?: ${name}_ConstructProps): void`)
         } else {
             const constructor_: GirFunction[] = (girClass['constructor'] || []) as GirFunction[]
             if (constructor_) {
                 if (Array.isArray(constructor_)) {
                     for (const f of constructor_) {
-                        const [desc, funcName] = this.getConstructorFunction(name, f, '    static ')
+                        const [desc, funcName] = this.getConstructorFunction(name, f, `    ${stat}`)
                         if (!funcName) continue
-                        if (funcName !== 'new') continue
-
+                        if (asInterface && funcName == 'new') {
+                            desc[0] = desc[0].replace('new', 'new:').replace(/:[^:]+$/, ` => ${name}`)
+                        }
                         def.push(...desc)
-
-                        const jsStyleCtor = desc[0].replace('static new', 'constructor').replace(/:[^:]+$/, '')
-
-                        def.push(jsStyleCtor)
                     }
                 }
             }
@@ -1177,6 +1174,11 @@ export class GirModule {
 
         if (isDerivedFromGObject) {
             def.push(`    static $gtype: ${this.packageName === 'GObject-2.0' ? '' : 'GObject.'}Type`)
+        }
+
+        if (girClass._fullSymName && !STATIC_NAME_ALREADY_EXISTS.includes(girClass._fullSymName)) {
+            // Records, classes and interfaces all have a static name
+            def.push(`    static name: string`)
         }
 
         return def
@@ -1282,9 +1284,31 @@ export class GirModule {
         // Properties for construction
         def.push(...this.generateConstructPropsInterface(girClass, name, qualifiedParentName, localParentName))
 
+        // By splitting a class into an interface and constructor we can inherit
+        // all instance methods implicitly while not inheriting static methods,
+        // which is just what we want
+        const asInterface = this.config.inheritance && !record && !isAbstract
+
         // START CLASS
         if (isAbstract) {
             def.push(`export abstract class ${name} {`)
+        } else if (asInterface) {
+            let inherits: string[] = girClass.prerequisite?.length ?
+                girClass.prerequisite.filter(p => p.$.name != undefined).map(p => p.$.name || "") : []
+            inherits = inherits.map(name => {
+                if (name.indexOf('.') > 0) {
+                    const [mod, leaf] = name.split('.')
+                    if (mod == this.name) {
+                        name = leaf
+                    }
+                }
+                return name
+            })
+            if (localParentName) {
+                inherits.unshift(localParentName)
+            }
+            const ext = inherits.length ? ` extends ${inherits.join(',')}` : ""
+            def.push(`export interface ${name}${ext} {`)
         } else {
             def.push(`export class ${name} {`)
         }
@@ -1295,31 +1319,50 @@ export class GirModule {
         // Can't export fields for GObjects because names would clash
         if (record) def.push(...this.processFields(girClass, localNames))
 
-        // Copy properties from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) =>
-            def.push(...this.processProperties(cls, localNames, propertyNames)),
-        )
-        // Copy properties from implemented interface
-        this.forEachInterface(girClass, (cls) => def.push(...this.processProperties(cls, localNames, propertyNames)))
-        // Copy fields from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processFields(cls, localNames)))
-        // Copy methods from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
-        // Copy methods from implemented interfaces
-        this.forEachInterface(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
-        // Copy virtual methods from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processVirtualMethods(cls)))
-        // Copy signals from inheritance tree
-        this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processSignals(cls, name)))
-        // Copy signals from implemented interfaces
-        this.forEachInterface(girClass, (cls) => def.push(...this.processSignals(cls, name)))
-
+        if (asInterface) {
+            // Properties
+            def.push(...this.processProperties(girClass, localNames, propertyNames))
+            // Methods
+            def.push(...this.processMethods(girClass, localNames))
+            // Virtual methods
+            def.push(...this.processVirtualMethods(girClass))
+            // Signals
+            def.push(...this.processSignals(girClass, name))
+        } else {
+            // Copy properties from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) =>
+                def.push(...this.processProperties(cls, localNames, propertyNames)),
+            )
+            // Copy properties from implemented interface
+            this.forEachInterface(girClass, (cls) => def.push(...this.processProperties(cls, localNames, propertyNames)))
+            // Copy fields from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processFields(cls, localNames)))
+            // Copy methods from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
+            // Copy methods from implemented interfaces
+            this.forEachInterface(girClass, (cls) => def.push(...this.processMethods(cls, localNames)))
+            // Copy virtual methods from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processVirtualMethods(cls)))
+            // Copy signals from inheritance tree
+            this.traverseInheritanceTree(girClass, (cls) => def.push(...this.processSignals(cls, name)))
+            // Copy signals from implemented interfaces
+            this.forEachInterface(girClass, (cls) => def.push(...this.processSignals(cls, name)))
+        }
+        // "notify" signals for properties
         def.push(...this.generateSignalMethods(girClass, propertyNames, name))
 
-        // TODO: Records have fields
+        // If we've just created an interface we need a constructor to go with
+        // it. The constructor is defined as an object with an anonymous
+        // interface without inheritance, which solves the problem of static
+        // method overloading, and it doesn't matter if the actual constructor
+        // calls super() because this is just a mocked up representation of it
+        // which doesn't affect the underlying code.
+        if (asInterface) {
+            def.push('}', '', `const ${name}: {`)
+        }
 
-        // Static side: default constructor
-        def.push(...this.generateConstructorAndStaticMethods(girClass, name))
+        // Static side, including default constructor
+        def.push(...this.generateConstructorAndStaticMethods(girClass, name, asInterface))
 
         // END CLASS
         def.push('}')
