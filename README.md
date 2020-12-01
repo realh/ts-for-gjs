@@ -129,8 +129,19 @@ module.exports = {
     girDirectories: '/usr/share/gir-1.0',
     modules: ['*'],
     ignore: [],
+    inheritance: true,
 }
 ```
+
+### Inheritance
+
+This fork includes an `inheritance` option. ts-for-gjs' normal mode is to provide class definitions with copies of all methods etc inherited through
+the GObject system, because conventional TS class inheritance can't deal with method name clashes/overloads that can occur in GObject bindings. The
+`inheritance` option enables a different type of output, taking advantage of an obscure feature of Typescript. Classes are split into an interface and
+a constructor with static methods, both having the same name. Interfaces can inherit other interfaces without name clashes causing a problem, and the
+constructor can simply not inherit anything, solving the problem for static methods and pseudo-constructors. As we are generating type mappings, not
+actual code, these constructors can be used as if they are classes without having to worry about the missing `super` in our representation. The return
+type of a constructor is an interface, and this does provide the inheritance information.
 
 ## Examples
 
