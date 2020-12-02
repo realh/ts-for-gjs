@@ -1366,7 +1366,7 @@ export class GirModule {
         // calls super() because this is just a mocked up representation of it
         // which doesn't affect the underlying code.
         if (asInterface) {
-            def.push('}', '', `const ${name}: {`)
+            def.push('}', '', `export const ${name}: {`)
         }
 
         // Static side, including default constructor
