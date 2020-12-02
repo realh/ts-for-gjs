@@ -1312,10 +1312,10 @@ export class GirModule {
                 }
                 return name
             })
-            if (localParentName) {
+            if (localParentName && inherits.indexOf(localParentName) < 0) {
                 inherits.unshift(localParentName)
             }
-            const ext = inherits.length ? ` extends ${inherits.join(',')}` : ""
+            const ext = inherits.length ? ` extends ${inherits.join(', ')}` : ""
             def.push(`export interface ${name}${ext} {`)
         } else {
             def.push(`export class ${name} {`)
