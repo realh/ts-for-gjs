@@ -882,12 +882,13 @@ export class GirModule {
     private getStaticConstructors(
         e: GirClass,
         name: string,
+        stat: 'static ' | '',
         filter?: (funcName: string) => boolean,
     ): FunctionDescription[] {
         const funcs = e['constructor']
         if (!Array.isArray(funcs)) return [[[], null]]
         let ctors = funcs.map((f) => {
-            return this.getConstructorFunction(name, f, '    static ', undefined)
+            return this.getConstructorFunction(name, f, `    ${stat}`, undefined)
         })
         if (filter) ctors = ctors.filter(([, funcName]) => funcName && filter(funcName))
         return ctors
@@ -906,7 +907,7 @@ export class GirModule {
      * @see https://discourse.gnome.org/t/using-class-methods-like-gtk-widget-class-get-css-name-from-gjs/4001
      * @param girClass
      */
-    private getClassMethods(girClass: GirClass) {
+    private getClassMethods(girClass: GirClass, stat: 'static ' | '') {
         if (!girClass.$.name) return []
         const fName = girClass.$.name + 'Class'
         let rec = this.ns.record?.find((r) => r.$.name == fName)
@@ -916,14 +917,17 @@ export class GirModule {
         }
         if (!rec) return []
         const methods = rec.method || []
-        return methods.map((m) => this.getFunction(m, '    static '))
+        return methods.map((m) => this.getFunction(m, `    ${stat}`))
     }
 
-    private getOtherStaticFunctions(girClass: GirClass, stat = true): FunctionDescription[] {
+    private getOtherStaticFunctions(
+        girClass: GirClass,
+        stat: 'static ' | '',
+    ): FunctionDescription[] {
         const fns: FunctionDescription[] = []
         if (girClass.function) {
             for (const func of girClass.function) {
-                const [desc, funcName] = this.getFunction(func, stat ? '    static ' : '    ', undefined, undefined)
+                const [desc, funcName] = this.getFunction(func, `    ${stat}`, undefined, undefined)
                 if (funcName && funcName !== 'new') fns.push([desc, funcName])
             }
         }
@@ -1115,22 +1119,26 @@ export class GirModule {
      * @param girClass
      * @param name
      */
-    private getAllStaticFunctions(girClass: GirClass, name: string) {
+    private getAllStaticFunctions(
+        girClass: GirClass,
+        name: string,
+        stat: 'static ' | '',
+    ) {
         const stc: string[] = []
 
         stc.push(
             ...this.processStaticFunctions(girClass, (cls) => {
-                return this.getStaticConstructors(cls, name)
+                return this.getStaticConstructors(cls, name, stat)
             }),
         )
         stc.push(
             ...this.processStaticFunctions(girClass, (cls) => {
-                return this.getOtherStaticFunctions(cls)
+                return this.getOtherStaticFunctions(cls, stat)
             }),
         )
         stc.push(
             ...this.processStaticFunctions(girClass, (cls) => {
-                return this.getClassMethods(cls)
+                return this.getClassMethods(cls, stat)
             }),
         )
 
@@ -1170,15 +1178,15 @@ export class GirModule {
             }
         }
 
-        def.push(...this.getAllStaticFunctions(girClass, name))
+        def.push(...this.getAllStaticFunctions(girClass, name, stat))
 
         if (isDerivedFromGObject) {
-            def.push(`    static $gtype: ${this.packageName === 'GObject-2.0' ? '' : 'GObject.'}Type`)
+            def.push(`    ${stat} $gtype: ${this.packageName === 'GObject-2.0' ? '' : 'GObject.'}Type`)
         }
 
         if (girClass._fullSymName && !STATIC_NAME_ALREADY_EXISTS.includes(girClass._fullSymName)) {
             // Records, classes and interfaces all have a static name
-            def.push(`    static name: string`)
+            def.push(`    ${stat} name: string`)
         }
 
         return def
