@@ -1258,7 +1258,7 @@ export class GirModule {
             let prereq = girClass.implements || []
             if (girClass.prerequisite?.length)
                 prereq = prereq.concat(girClass.prerequisite)
-            let inherits = prereq.filter(p => p.$.name != undefined).map(p => p.$.name || "")
+            let inherits = prereq.filter(p => p.$.name != undefined).map(p => p.$.name || '')
             inherits = inherits.map(name => {
                 if (name.indexOf('.') > 0) {
                     const [mod, leaf] = name.split('.')
@@ -1271,7 +1271,7 @@ export class GirModule {
             if (localParentName && inherits.indexOf(localParentName) < 0) {
                 inherits.unshift(localParentName)
             }
-            const ext = inherits.length ? ` extends ${inherits.join(', ')}` : ""
+            const ext = inherits.length ? ` extends ${inherits.join(', ')}` : ''
             def.push(`export interface ${name}${ext} {`)
         } else {
             def.push(`export class ${name} {`)
