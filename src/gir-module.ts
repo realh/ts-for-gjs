@@ -1372,8 +1372,8 @@ export class GirModule {
             if (localParentName && inherits.indexOf(localParentName) < 0) {
                 inherits.unshift(localParentName)
             }
-            const ext = inherits.length ? ` extends ${inherits.join(', ')}` : ''
-            this.addExport(def, 'interface', name, '{')
+            const ext = inherits.length ? `extends ${inherits.join(', ')} ` : ''
+            this.addExport(def, 'interface', name, '${ext}{')
         } else {
             this.addExport(def, 'class', name, '{')
         }
