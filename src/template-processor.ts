@@ -118,6 +118,7 @@ export class TemplateProcessor {
         const result: string[] = []
         const ident = this.generateIndent(identCount)
         result.push(
+            `${ident}/* Generic signal methods */`,
             `${ident}connect(sigName: string, callback: any): number`,
             `${ident}connect_after(sigName: string, callback: any): number`,
             `${ident}emit(sigName: string, ...args: any[]): void`,

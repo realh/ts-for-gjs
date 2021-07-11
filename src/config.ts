@@ -30,6 +30,7 @@ export class Config {
         verbose: true,
         ignoreConflicts: false,
         exportDefault: false,
+        inheritance: false,
     }
 
     /**
@@ -79,6 +80,10 @@ export class Config {
         ignoreConflicts: flags.boolean({
             description: 'Do not ask for package versions if multiple versions are found',
             default: Config.defaults.ignoreConflicts,
+        }),
+        inheritance: flags.boolean({
+            description: 'Represent inheritance relationships in output (experimental)',
+            default: Config.defaults.inheritance,
         }),
         print: flags.boolean({
             char: 'p',
@@ -160,7 +165,8 @@ export class Config {
             pretty: config.pretty,
             verbose: config.verbose,
             buildType: config.buildType || defaultBuildType,
-            exportDefault: config.exportDefault
+            exportDefault: config.exportDefault,
+            inheritance: config.inheritance,
         }
         return generateConfig
     }
@@ -178,6 +184,7 @@ export class Config {
             buildType: flags.buildType as BuildType | undefined,
             verbose: flags.verbose,
             ignoreConflicts: flags.ignoreConflicts,
+            inheritance: flags.inheritance,
             pretty: flags.pretty,
             print: flags.print,
             outdir: flags.outdir,
@@ -233,6 +240,12 @@ export class Config {
             if (config.exportDefault === Config.defaultCliFlags.exportDefault.default &&
                 typeof configFile.config.exportDefault === 'boolean') {
                 config.exportDefault = configFile.config.exportDefault
+            }
+            if (
+                config.inheritance === Config.defaultCliFlags.inheritance.default &&
+                typeof configFile.config.inheritance === 'boolean'
+            ) {
+                config.inheritance = configFile.config.inheritance
             }
         }
         return config

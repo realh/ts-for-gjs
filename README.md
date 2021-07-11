@@ -131,6 +131,7 @@ module.exports = {
     modules: ['*'],
     ignore: [],
     exportDefault: true,
+    inheritance: true,
 }
 ```
 
@@ -151,6 +152,25 @@ you now have to write:
 `import Gtk from "<path to gi bindings>/Gtk-4.0js"`
 
 Destructuring individual items in the import statement is not supported for this type of import.
+
+### Inheritance
+
+This fork includes an `inheritance` option. ts-for-gjs' normal mode is to provide class definitions with copies of all methods etc inherited through
+the GObject system, because conventional TS class inheritance can't deal with method name clashes/overloads that can occur in GObject bindings. The
+`inheritance` option enables a different type of output, taking advantage of an obscure feature of Typescript. Classes are split into an interface and
+a constructor with static methods, both having the same name. The constructor can simply not inherit anything, solving the problem for static methods
+and pseudo-constructors. As we are generating type mappings, not actual code, these constructors can be used as if they are classes without having to
+worry about the missing `super` in our representation. The return type of a constructor is an interface, and this does provide the inheritance
+information.
+
+All this results in classes that are easier to use because they do not need explicit casting, and smaller definition files.
+
+Unfortunately there are some non-static methods in existing GObject-based code that hide different methods with the same name in parent classes.  The
+only way this can be handled in Typescript while still using inheritance is to add bogus overloads, but trying to call those overloads will cause
+breakage. For example, `Gtk.ToolShell`'s `get_style` method clashes with `Gtk.Widget`'s `get_style`. Therefore you should use them like this:
+
+`Gtk.ToolShell.prototype.get_style.call(widget);
+Gtk.Widget.prototype.get_style.call(widget);`
 
 ## Examples
 

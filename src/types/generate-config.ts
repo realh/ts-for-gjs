@@ -11,4 +11,5 @@ export interface GenerateConfig {
     verbose: boolean
     pretty: boolean
     exportDefault: boolean
+    inheritance: boolean
 }
