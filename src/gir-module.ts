@@ -363,7 +363,7 @@ export class GirModule {
      * @param girVar
      */
     private typeLookupTransformed(girVar: GirVariable, out = true): string {
-        let names = this.typeLookup(girVar, out).split('.')
+        let names = this.typeLookup(girVar).split('.')
         names = names.map((name) => this.transformation.transformTypeName(name))
         return names.join('.')
     }
@@ -449,8 +449,9 @@ export class GirModule {
         if (parameters && parameters.length > 0) {
             const parametersArray = parameters[0].parameter || []
             // Instance parameter needs to be exposed for class methods (see comment above getClassMethods())
-            const instanceParameter = parameters[0]['instance-parameter']
-            if (instanceParameter && instanceParameter[0]) {
+            const instanceParameter = parameters[0]["instance-parameter"]
+            if (instanceParameter && instanceParameter[0])
+            {
                 const typeName = instanceParameter[0].type ? instanceParameter[0].type[0].$.name : undefined
                 const rec = typeName ? this.ns.record?.find((r) => r.$.name == typeName) : undefined
                 const structFor = rec?.$['glib:is-gtype-struct-for']
