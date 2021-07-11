@@ -35,6 +35,9 @@ export default class Generate extends Command {
         '',
         '# Generate .d.ts. files but not for Gtk-3.0 and xrandr-1.3',
         `${Config.appName} generate --ignore=Gtk-3.0 xrandr-1.3`,
+        '',
+        "# Represent GObject's inheritance model in classes and interfaces (experimental)",
+        `${Config.appName} generate '*' --inheritance`,
     ]
 
     static flags = {
@@ -47,6 +50,7 @@ export default class Generate extends Command {
         pretty: Config.defaultCliFlags.pretty,
         verbose: Config.defaultCliFlags.verbose,
         ignoreConflicts: Config.defaultCliFlags.ignoreConflicts,
+        inheritance: Config.defaultCliFlags.inheritance,
         print: Config.defaultCliFlags.print,
         configName: Config.defaultCliFlags.configName,
     }
@@ -63,7 +67,7 @@ export default class Generate extends Command {
         const config = await Config.load((flags as unknown) as ConfigFlags, argv)
 
         if (argv.length === 0) {
-            this.error("Need to pass an argument via 'ts-for-git generate [arguments here]'!")
+            this.error("Need to pass an argument via 'ts-for-gjs generate [arguments here]'!")
         }
 
         for (const i in config.environments) {
